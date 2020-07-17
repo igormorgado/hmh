@@ -45,14 +45,16 @@ SDL_Window * InitGame(u16 screen_width, u16 screen_height);
 void ExitGame(SDL_Window *window);
 i32  HandleEvent(const SDL_Event event);
 i32  HandleWindow(const SDL_Event event);
-i32  HandleKeyDown(const SDL_Event event);
+i32  HandleKey(const SDL_Event event);
 void HandleController(void);
-struct window_dimension WindowGetDimension(SDL_Window *window);
 
+struct window_dimension WindowGetDimension(SDL_Window *window);
 static int ResizeBackBuffer(SDL_Window *window, u16 width, u16 height);
 static int UpdateWindow(SDL_Window *window);
 static int RenderWeirdGradient(SDL_Window *window, i16 xoffset, i16 yoffset);
 
+i32  GameControllersInit();
+void GameControllersQuit();
 
 // GLOBAL STUFF
 struct offscreen_buffer GlobalBackBuffer;
@@ -77,30 +79,6 @@ main(void)
         goto __EXIT__;
     }
 
-    int njoys = SDL_NumJoysticks();
-    int ControllerIndex = 0;
-    for (int i=0; i < njoys; ++i)
-    {
-        if(ControllerIndex >= MAX_CONTROLLERS)
-        {
-            break;
-        }
-        if(SDL_IsGameController(i))
-        {
-            ControllerHandles[ControllerIndex] = SDL_GameControllerOpen(i);
-            // RumbleHandles[ControllerIndex] = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(ControllerHandles[ControllerIndex]));
-            RumbleHandles[ControllerIndex] = SDL_HapticOpen(i);
-            if(SDL_HapticRumbleInit(RumbleHandles[ControllerIndex]) >= 0)
-            {
-                // DO NOTHING
-            } else {
-                SDL_HapticClose(RumbleHandles[ControllerIndex]);
-                RumbleHandles[ControllerIndex] = NULL;
-            }
-            ControllerIndex++;
-        }
-    }
-
 
     struct window_dimension wdim = WindowGetDimension(window);
     ResizeBackBuffer(window, wdim.width, wdim.height);
@@ -116,8 +94,8 @@ main(void)
                running = false;
            }
         }
-
         HandleController();
+
         RenderWeirdGradient(window, XOffset, YOffset);
         UpdateWindow(window);
 
@@ -178,6 +156,9 @@ InitGame(u16 screen_width, u16 screen_height)
     }
 
     SDL_RenderSetLogicalSize(renderer, screen_width, screen_height);
+
+    GameControllersInit();
+
     return window;
 }
 
@@ -187,11 +168,7 @@ ExitGame(SDL_Window *window)
 {
     // TODO: Assert Window not null
     SDL_Log ("Exiting\n");
-    for (int i = 0; i < MAX_CONTROLLERS; i++)
-    {
-        if (ControllerHandles[i]) SDL_GameControllerClose(ControllerHandles[i]);
-        if (RumbleHandles[i])     SDL_HapticClose(RumbleHandles[i]);
-    }
+    GameControllersQuit();
     SDL_Renderer *renderer = SDL_GetRenderer(window);
     if (GlobalBackBuffer.memory)    free(GlobalBackBuffer.memory);
     if (GlobalBackBuffer.texture)   SDL_DestroyTexture(GlobalBackBuffer.texture);
@@ -211,7 +188,8 @@ HandleEvent(const SDL_Event event)
     {
         case SDL_QUIT:          retval = RETURN_EXIT; break;
         case SDL_WINDOWEVENT:   retval = HandleWindow(event); break;
-        case SDL_KEYDOWN:       retval = HandleKeyDown(event); break;
+        case SDL_KEYUP:         retval = HandleKey(event); break;
+        case SDL_KEYDOWN:       retval = HandleKey(event); break;
         default: break;
     }
     return retval;
@@ -288,19 +266,77 @@ HandleWindow(const SDL_Event event)
 
 
 i32
-HandleKeyDown(const SDL_Event event)
+HandleKey(const SDL_Event event)
 {
-    // TODO: Assert eevent not null
-    switch(event.key.keysym.sym)
+    SDL_Keycode KeyCode = event.key.keysym.sym;
+    SDL_Keymod  KeyMod  = event.key.keysym.mod;
+    // Should I use instead:
+    // SDL_Keymod  KeyMod = SDL_GetModState()
+
+    bool isDown = (event.key.state == SDL_PRESSED);
+    bool wasDown = false;
+    if (event.key.state == SDL_RELEASED)
     {
-        case SDLK_ESCAPE: return RETURN_EXIT; break;
-        case SDLK_q: return RETURN_EXIT; break;
-        case SDLK_RETURN:
-            if(event.key.keysym.mod & KMOD_LALT) {
-                SDL_Log("ALT-ENTER pressed\n");
+        wasDown = true;
+    } else if (event.key.repeat != 0) {
+        wasDown = true;
+    }
+    if (event.key.repeat == 0)
+    {
+        if(KeyCode == SDLK_w)
+        {
+        }
+        else if(KeyCode == SDLK_a)
+        {
+        }
+        else if(KeyCode == SDLK_s)
+        {
+        }
+        else if(KeyCode == SDLK_d)
+        {
+        }
+        else if(KeyCode == SDLK_q)
+        {
+            return RETURN_EXIT;
+        }
+        else if(KeyCode == SDLK_e)
+        {
+        }
+        else if(KeyCode == SDLK_UP)
+        {
+        }
+        else if(KeyCode == SDLK_DOWN)
+        {
+        }
+        else if(KeyCode == SDLK_LEFT)
+        {
+        }
+        else if(KeyCode == SDLK_RIGHT)
+        {
+        }
+        else if(KeyCode == SDLK_SPACE)
+        {
+        }
+        else if(KeyCode == SDLK_ESCAPE)
+        {
+            if(isDown)
+            {
+                SDL_Log("Escape Is down\n");
             }
-            break;
-        default: break;
+            if(wasDown)
+            {
+                SDL_Log("Escape Was down\n");
+            }
+            // return RETURN_EXIT;
+        }
+        else if((KeyCode == SDLK_RETURN) && (KeyMod & KMOD_ALT))
+        {
+            SDL_Log("ALT-ENTER pressed\n");
+        }
+        else
+        {
+            SDL_Log("Unmapped key pressed\n");
+        }
     }
     return RETURN_SUCCESS;
 }
@@ -539,4 +575,43 @@ void HandleController(void)
 
     }
     return;
+}
+
+i32
+GameControllersInit()
+{
+    int njoys = SDL_NumJoysticks();
+    int ControllerIndex = 0;
+    for (int i=0; i < njoys; ++i)
+    {
+        if(ControllerIndex >= MAX_CONTROLLERS)
+        {
+            break;
+        }
+        if(SDL_IsGameController(i))
+        {
+            ControllerHandles[ControllerIndex] = SDL_GameControllerOpen(i);
+            // RumbleHandles[ControllerIndex] = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(ControllerHandles[ControllerIndex]));
+            RumbleHandles[ControllerIndex] = SDL_HapticOpen(i);
+            if(SDL_HapticRumbleInit(RumbleHandles[ControllerIndex]) >= 0)
+            {
+                // DO NOTHING
+            } else {
+                SDL_HapticClose(RumbleHandles[ControllerIndex]);
+                RumbleHandles[ControllerIndex] = NULL;
+            }
+            ControllerIndex++;
+        }
+    }
+    return ControllerIndex;
+}
+
+void
+GameControllersQuit()
+{
+    for (int i = 0; i < MAX_CONTROLLERS; i++)
+    {
+        if (ControllerHandles[i]) SDL_GameControllerClose(ControllerHandles[i]);
+        if (RumbleHandles[i])     SDL_HapticClose(RumbleHandles[i]);
+    }
 }
