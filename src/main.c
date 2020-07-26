@@ -19,14 +19,14 @@ typedef unsigned int    uint;
 typedef float           f32;
 typedef double          f64;
 
-enum RETURN_STATUS 
+enum RETURN_STATUS
 {
     RETURN_FAILURE = -1,
     RETURN_SUCCESS = 0,
     RETURN_EXIT = 255
 };
 
-struct offscreen_buffer 
+struct offscreen_buffer
 {
     SDL_Texture *texture;
     void *memory;
@@ -56,6 +56,11 @@ static int RenderWeirdGradient(SDL_Window *window, i16 xoffset, i16 yoffset);
 i32  GameControllersInit();
 void GameControllersQuit();
 
+void AudioCallback(void *userdata, u8 *audiodata, int length);
+
+
+
+
 // GLOBAL STUFF
 struct offscreen_buffer GlobalBackBuffer;
 u8 red = 0;
@@ -68,15 +73,34 @@ SDL_Haptic *RumbleHandles[MAX_CONTROLLERS];
 
 
 int
-main(void) 
-{ 
-    i32 exitval;
+main(void)
+{
+    i32 exitval = EXIT_FAILURE;
     i32 retval = RETURN_SUCCESS;
+    i32 SamplesPerSecond = 44000;
+    i32 BufferSize = 4096;
 
     SDL_Window *window = InitGame(800, 600);
     if(!window) {
-        exitval = EXIT_FAILURE;
         goto __EXIT__;
+    }
+
+    SDL_AudioSpec AudioSettings = {0};
+    AudioSettings.freq = SamplesPerSecond;
+    AudioSettings.format = AUDIO_S16LSB;
+    AudioSettings.channels = 2;
+    AudioSettings.samples = BufferSize;
+    AudioSettings.callback =  &AudioCallback;
+    //SDL_OpenAudio(&AudioSettings, 0);
+    SDL_AudioDeviceID audiodev = SDL_OpenAudioDevice(NULL, 0, &AudioSettings, NULL, 0);
+    if (AudioSettings.format != AUDIO_S16LSB)
+    {
+        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
+                      "%s: SDL_OpenAudio(): Could not get S16LE format\n",
+                      __func__);
+        goto __EXIT__;
+    } else {
+        SDL_PauseAudio(0);
     }
 
 
@@ -86,10 +110,10 @@ main(void)
     while(running == true)
     {
         SDL_Event event;
-        while(SDL_PollEvent(&event)) 
+        while(SDL_PollEvent(&event))
         {
            retval = HandleEvent(event);
-           if(retval == RETURN_EXIT) 
+           if(retval == RETURN_EXIT)
            {
                running = false;
            }
@@ -105,8 +129,10 @@ main(void)
 
     exitval = EXIT_SUCCESS;
 __EXIT__:
-     ExitGame(window);
-     return exitval;
+    if (audiodev > 0)
+        SDL_CloseAudioDevice(audiodev);
+    ExitGame(window);
+    return exitval;
 }
 
 
@@ -116,15 +142,15 @@ InitGame(u16 screen_width, u16 screen_height)
     // TODO: Assert Window not null
     // TODO: Assert widht/height < 4096
     i32 retval;
-    int sdl_flags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC;
+    int sdl_flags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC | SDL_INIT_AUDIO;
     int wnd_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
     int rnd_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
 
     retval = SDL_Init(sdl_flags);
     if(retval < 0)
     {
-        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION, 
-                      "%s: SDL_Init(): %s\n", 
+        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
+                      "%s: SDL_Init(): %s\n",
                       __func__, SDL_GetError());
         return NULL;
     }
@@ -175,7 +201,7 @@ ExitGame(SDL_Window *window)
     if (renderer)                   SDL_DestroyRenderer(renderer);
     if (window)                     SDL_DestroyWindow(window);
     SDL_Quit();
-    return; 
+    return;
 }
 
 
@@ -333,6 +359,10 @@ HandleKey(const SDL_Event event)
         {
             SDL_Log("ALT-ENTER pressed\n");
         }
+        else if((KeyCode == SDLK_F4) && (KeyMod & KMOD_ALT))
+        {
+            return RETURN_EXIT;
+        }
         else
         {
             SDL_Log("Unmapped key pressed\n");
@@ -354,7 +384,7 @@ ResizeBackBuffer(SDL_Window *window, u16 width, u16 height)
         //munmap(GlobalBackBuffer.memory,
         //       GlobalBackBuffer.width * GlobalBackBuffer.height * SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888));
     }
-    
+
     if(GlobalBackBuffer.texture)
     {
         SDL_DestroyTexture(GlobalBackBuffer.texture);
@@ -364,15 +394,15 @@ ResizeBackBuffer(SDL_Window *window, u16 width, u16 height)
     GlobalBackBuffer.height = height;
 
     SDL_Renderer *renderer = SDL_GetRenderer(window);
-    GlobalBackBuffer.texture = SDL_CreateTexture(renderer, 
+    GlobalBackBuffer.texture = SDL_CreateTexture(renderer,
                                                   SDL_PIXELFORMAT_ARGB8888,
                                                   SDL_TEXTUREACCESS_STREAMING,
                                                   GlobalBackBuffer.width,
                                                   GlobalBackBuffer.height);
     if(!GlobalBackBuffer.texture)
     {
-        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION, 
-                      "%s: SDL_CreateTexture(GlobalBackBuffer): %s\n", 
+        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
+                      "%s: SDL_CreateTexture(GlobalBackBuffer): %s\n",
                       __func__, SDL_GetError());
         return RETURN_FAILURE;
     }
@@ -388,8 +418,8 @@ ResizeBackBuffer(SDL_Window *window, u16 width, u16 height)
     //                     0);
     if(!GlobalBackBuffer.memory)
     {
-        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION, 
-                      "%s: malloc(GlobalBackBuffer.memory): %s\n", 
+        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
+                      "%s: malloc(GlobalBackBuffer.memory): %s\n",
                       __func__, SDL_GetError());
         return RETURN_FAILURE;
     }
@@ -410,8 +440,8 @@ UpdateWindow(SDL_Window *window)
     }
 
     retval = SDL_UpdateTexture(GlobalBackBuffer.texture,
-                               NULL, 
-                               GlobalBackBuffer.memory, 
+                               NULL,
+                               GlobalBackBuffer.memory,
                                GlobalBackBuffer.width * SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888));
 
     if(retval < 0)
@@ -482,7 +512,9 @@ RenderWeirdGradient(SDL_Window *window, i16 blueoffset, i16 greenoffset)
         {
             u8 blue = (x + blueoffset);
             u8 green = (y + greenoffset);
-            *pixel++ = ((red << 16) | (green << 8) | blue);
+            *pixel++ = ((red << 16)  |
+                        (green << 8) |
+                        (blue << 0));
         }
         row += pitch;
     }
@@ -532,8 +564,8 @@ void HandleController(void)
             buttonB   = SDL_GameControllerGetButton(ControllerHandles[i], SDL_CONTROLLER_BUTTON_B);
             buttonX   = SDL_GameControllerGetButton(ControllerHandles[i], SDL_CONTROLLER_BUTTON_X);
             buttonY   = SDL_GameControllerGetButton(ControllerHandles[i], SDL_CONTROLLER_BUTTON_Y);
-            lstickX   = SDL_GameControllerGetAxis(ControllerHandles[i], SDL_CONTROLLER_AXIS_LEFTX); 
-            lstickY   = SDL_GameControllerGetAxis(ControllerHandles[i], SDL_CONTROLLER_AXIS_LEFTY); 
+            lstickX   = SDL_GameControllerGetAxis(ControllerHandles[i], SDL_CONTROLLER_AXIS_LEFTX);
+            lstickY   = SDL_GameControllerGetAxis(ControllerHandles[i], SDL_CONTROLLER_AXIS_LEFTY);
 
         } else {
             // TODO: Controller not plugged int
@@ -563,8 +595,8 @@ void HandleController(void)
             retval = SDL_HapticRumblePlay(RumbleHandles[i], 0.5f, 2000);
 
             if(retval < 0) {
-                SDL_LogError (SDL_LOG_CATEGORY_APPLICATION, 
-                              "%s: SDL_HapticRumblePlay(%d): %s\n", 
+                SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
+                              "%s: SDL_HapticRumblePlay(%d): %s\n",
                               __func__, i, SDL_GetError());
             }
         }
@@ -614,4 +646,10 @@ GameControllersQuit()
         if (ControllerHandles[i]) SDL_GameControllerClose(ControllerHandles[i]);
         if (RumbleHandles[i])     SDL_HapticClose(RumbleHandles[i]);
     }
+}
+
+void
+AudioCallback(void *userdata, u8 *audiodata, int length)
+{
+    memset(audiodata, 0, length);
 }
