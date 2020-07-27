@@ -44,7 +44,6 @@ struct window_dimension
     int height;
 };
 
-#if 0
 struct audio_ring_buffer
 {
     i32 size;
@@ -52,13 +51,17 @@ struct audio_ring_buffer
     i32 play_cursor;
     void * data;
 };
-#endif
 
+struct states
+{
+    bool print_audio_queue;
+};
 
 /*
  * PROTOTYPES
  */
 
+void init_globals(void);
 SDL_Window * InitGame(u16 screen_width, u16 screen_height);
 void ExitGame(SDL_Window *window);
 i32  HandleEvent(const SDL_Event event);
@@ -72,18 +75,20 @@ static int RenderWeirdGradient(SDL_Window *window, i16 xoffset, i16 yoffset);
 i32  GameControllersInit();
 void GameControllersQuit();
 
-#if 0
 SDL_AudioDeviceID InitAudioQueue(i32 SamplesPerSecond, i32 BufferSize);
-SDL_AudioDeviceID InitAudioCallback(i32 SamplesPerSecond, i32 BufferSize);
 void PlaySquareWaveQueue(SDL_AudioDeviceID audiodev, i32 tone, i32 amplitude);
-void PlaySquareWaveCallback(SDL_AudioDeviceID audiodev, i32 tone, i32 amplitude);
-void AudioCallback(void *userdata, u8 *audiodata, int length);
-#endif
+
+// SDL_AudioDeviceID InitAudioCallback(i32 SamplesPerSecond, i32 BufferSize);
+// void PlaySquareWaveCallback(SDL_AudioDeviceID audiodev, i32 tone, i32 amplitude);
+// void AudioCallback(void *userdata, u8 *audiodata, int length);
 
 
 /*
  * GLOBAL STUFF
  */
+
+/* Global state */
+struct states state;
 
 /* Video data */
 struct offscreen_buffer GlobalBackBuffer;
@@ -97,19 +102,25 @@ i32 FramesPerSecond = 60;
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
 SDL_Haptic *RumbleHandles[MAX_CONTROLLERS];
 
-#if 0
 /* Sound  data */
-struct audio_ring_buffer AudioRingBuffer;
 i32 SamplesPerSecond = 48000;
+i32 BytesPerSample;
+u32 RunningSampleIndex;
 i32 ToneHz = 440;
 i16 Amplitude = 2000;
-i32 BytesPerSample;
+
+#if 0
+struct audio_ring_buffer AudioRingBuffer;
 i32 SecondaryBufferSize;
 i32 BytesPerFrame;
-u32 RunningSampleIndex = 0;
 SDL_AudioDeviceID audiodev;
 #endif
 
+
+void init_globals()
+{
+    BytesPerSample = 2 * sizeof(i16);
+}
 
 /*
  * BEGIN CODE
@@ -125,14 +136,16 @@ main(void)
         goto __EXIT__;
     }
 
-#if 0
-    BytesPerSample = sizeof(i16) * 2;
-    BytesPerFrame = SamplesPerSecond * BytesPerSample / FramesPerSecond;
-    SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
+    /* DIE! */
+    init_globals();
 
-    //audiodev = InitAudioQueue(SamplesPerSecond, BytesPerFrame);
-    audiodev = InitAudioCallback(SamplesPerSecond, BytesPerFrame);
+    // Queue Buffer size
+    i32 buffer_size = SamplesPerSecond * BytesPerSample / FramesPerSecond;
+    SDL_AudioDeviceID audiodev = InitAudioQueue(SamplesPerSecond, buffer_size);
     bool SoundIsPlaying = false;
+#if 0
+    SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
+    audiodev = InitAudioCallback(SamplesPerSecond, BytesPerFrame);
 #endif
 
     struct window_dimension wdim = WindowGetDimension(window);
@@ -140,6 +153,7 @@ main(void)
     bool running = true;
     while(running == true)
     {
+        state.print_audio_queue = false;
         SDL_Event event;
         while(SDL_PollEvent(&event))
         {
@@ -153,16 +167,19 @@ main(void)
 
         RenderWeirdGradient(window, XOffset, YOffset);
 
-#if 0
         if(!SoundIsPlaying)
         {
             SDL_PauseAudioDevice(audiodev, 0);
             SoundIsPlaying = true;
         } else {
-            // PlaySquareWaveQueue(audiodev, ToneHz, Amplitude);
-            PlaySquareWaveCallback(audiodev, ToneHz, Amplitude);
+            PlaySquareWaveQueue(audiodev, ToneHz, Amplitude);
+            //PlaySquareWaveCallback(audiodev, ToneHz, Amplitude);
         }
-#endif
+
+        if(state.print_audio_queue == true)
+        {
+             SDL_Log("Audio Queue: %d  - Target: %d\n", SDL_GetQueuedAudioSize(audiodev), SamplesPerSecond*BytesPerSample);
+        }
 
         UpdateWindow(window);
 
@@ -172,10 +189,8 @@ main(void)
 
     exitval = EXIT_SUCCESS;
 __EXIT__:
-#if 0
     if (audiodev > 0)
         SDL_CloseAudioDevice(audiodev);
-#endif
     ExitGame(window);
     return exitval;
 }
@@ -625,21 +640,19 @@ void HandleController(void)
             // TODO: Controller not plugged int
         }
 
-#if 0
-        if(start == true)
-        {
-            SDL_Log("Audio Queue: %d  - Target: %d\n", SDL_GetQueuedAudioSize(audiodev), SamplesPerSecond*BytesPerSample);
+        if (lshoulder == true) {
+            coeff = 0.06f;
+        } else {
+            coeff = 0.02f;
         }
 
-        if(back == true)
+        if(start == true)
         {
-            SDL_Log("Audio Queue: %d \n", SDL_GetQueuedAudioSize(audiodev));
+            state.print_audio_queue = true;
         }
 
         if(right == true)
         {
-            // f32 nv = ceilf(ToneHz * 1.01f);
-            // SDL_Log("%d %8.2f %d\n", ToneHz, nv, MAXINT((i32)nv, 1));
             ToneHz = (int)ceilf((f32)ToneHz * (1.f + coeff));
             ToneHz = MININT(10000, ToneHz);
             SDL_Log("Tone %d\n", ToneHz);
@@ -662,7 +675,6 @@ void HandleController(void)
             Amplitude = MAXINT(0, Amplitude);
             SDL_Log("Amplitude %d\n", Amplitude);
         }
-#endif
 
 
         if (buttonA == true)
@@ -680,11 +692,6 @@ void HandleController(void)
         if (buttonY == true) {
             red += 1;
             SDL_Log("RED+\n");
-        }
-        if (lshoulder == true) {
-            coeff = 0.06f;
-        } else {
-            coeff = 0.02f;
         }
 
 
@@ -730,10 +737,8 @@ GameControllersInit()
             ControllerHandles[ControllerIndex] = SDL_GameControllerOpen(i);
             // RumbleHandles[ControllerIndex] = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(ControllerHandles[ControllerIndex]));
             RumbleHandles[ControllerIndex] = SDL_HapticOpen(i);
-            if(SDL_HapticRumbleInit(RumbleHandles[ControllerIndex]) >= 0)
+            if(SDL_HapticRumbleInit(RumbleHandles[ControllerIndex]) < 0)
             {
-                // DO NOTHING
-            } else {
                 SDL_HapticClose(RumbleHandles[ControllerIndex]);
                 RumbleHandles[ControllerIndex] = NULL;
             }
@@ -749,21 +754,30 @@ GameControllersQuit()
 {
     for (int i = 0; i < MAX_CONTROLLERS; i++)
     {
-        if (ControllerHandles[i]) SDL_GameControllerClose(ControllerHandles[i]);
-        if (RumbleHandles[i])     SDL_HapticClose(RumbleHandles[i]);
+        SDL_Log("%s: %d Controller @%p \t Rumble @%p\n", __func__, i,
+                (void*)ControllerHandles[i], (void*)RumbleHandles[i]);
+        if (ControllerHandles[i]) {
+            SDL_Log("%s: Closing Controller %d @%p\n", __func__, i, (void*)ControllerHandles[i]);
+            SDL_GameControllerClose(ControllerHandles[i]);
+            ControllerHandles[i] = NULL;
+        }
+        if (RumbleHandles[i] != NULL) {
+            SDL_Log("%s: Closing Haptic %d @%p\n", __func__, i, (void*)RumbleHandles[i]);
+            SDL_HapticClose(RumbleHandles[i]);
+            RumbleHandles[i] = NULL;
+        }
     }
 }
 
 
-#if 0
 SDL_AudioDeviceID
-InitAudioQueue(i32 SamplesPerSecond, i32 BufferSize)
+InitAudioQueue(i32 samples_per_second, i32 bufsz)
 {
     SDL_AudioSpec AudioSettings = {0};
-    AudioSettings.freq = SamplesPerSecond;
+    AudioSettings.freq = samples_per_second;
     AudioSettings.format = AUDIO_S16LSB;
     AudioSettings.channels = 2;
-    AudioSettings.samples = BufferSize;
+    AudioSettings.samples = bufsz;
 
     SDL_AudioDeviceID adev = SDL_OpenAudioDevice(NULL, 0, &AudioSettings, NULL, 0);
     SDL_Log("%s: Audio opened: freq: %d, %d channels, %d bufsz\n",
@@ -791,42 +805,42 @@ PlaySquareWaveQueue (SDL_AudioDeviceID adev, i32 tone, i32 amplitude)
      */
 
     /* Square wave definition */
-    i32 SquareWavePeriod = SamplesPerSecond / tone;
-    i32 HalfSquareWavePeriod = SquareWavePeriod / 2;
+    i32 square_wave_period = SamplesPerSecond / tone;
+    i32 half_square_wave_period = square_wave_period / 2;
 
     /* Some funny audio sampling math */
     //i32 SamplesPerFrame = SamplesPerSecond/FramesPerSecond;
-    i32 TargetQueueBytes = SamplesPerSecond * BytesPerSample;
-
-    i32 QueueSizeBytes = SDL_GetQueuedAudioSize(adev);
-    i32 BytesToWrite = TargetQueueBytes - QueueSizeBytes;
+    i32 target_queue_bytes = SamplesPerSecond * BytesPerSample;
+    i32 queue_size_bytes = SDL_GetQueuedAudioSize(adev);
+    i32 bytes_to_write = target_queue_bytes - queue_size_bytes;
 
     /* Queue is starving */
-    if(BytesToWrite > 0)
+    if(bytes_to_write > 0)
     {
-        void * SoundBuffer = malloc (BytesToWrite);
-        if(!SoundBuffer)
+        void * sound_buffer = malloc (bytes_to_write);
+        if(!sound_buffer)
         {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                     "%s: malloc(SoundBuffer)\n", __func__);
             exit(EXIT_FAILURE);
         }
 
-        i16  * SampleOut   = (i16 *) SoundBuffer;
-        i32    SampleCount = BytesToWrite / BytesPerSample;
+        i16  * sample_out   = (i16 *) sound_buffer;
+        i32    sample_count = bytes_to_write / BytesPerSample;
 
-        for(i32 SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
+        for(i32 sample_index = 0; sample_index < sample_count; ++sample_index)
         {
-            i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ? amplitude : -amplitude;
-            *SampleOut++ = SampleValue;     // L
-            *SampleOut++ = SampleValue;     // R
+            i16 sample_value = ((RunningSampleIndex++ / half_square_wave_period) % 2) ? amplitude : -amplitude;
+            *sample_out++ = sample_value;     // L
+            *sample_out++ = sample_value;     // R
         }
-        SDL_QueueAudio(adev, SoundBuffer, BytesToWrite);
-        free(SoundBuffer);
+        SDL_QueueAudio(adev, sound_buffer, bytes_to_write);
+        free(sound_buffer);
     }
 }
 
 
+#if 0
 void
 AudioCallback(void *userdata, u8 *audiodata, i32 length)
 {
