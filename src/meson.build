@@ -1,3 +1,4 @@
+#ide:editable-filelist
 sources = [ 'main.c' ]
 
 cc = meson.get_compiler('c')
