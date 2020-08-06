@@ -4,9 +4,19 @@
 #include <math.h>
 #include <SDL2/SDL.h>
 #include <assert.h>
+#include <sys/mman.h>
 
 #define MININT(a, b)    ((a) < (b) ? (a) : (b))
 #define MAXINT(a, b)    ((a) > (b) ? (a) : (b))
+
+#ifndef MAP_ANONYMOUS
+#define MAP_ANONYMOUS MAP_ANON
+#endif
+
+
+#define internal static
+#define local_persist static
+#define global_variable static
 
 typedef int8_t          i8;
 typedef int16_t         i16;
@@ -22,12 +32,48 @@ typedef unsigned int    uint;
 typedef float           f32;
 typedef double          f64;
 
+
 enum RETURN_STATUS
 {
     RETURN_FAILURE = -1,
     RETURN_SUCCESS = 0,
     RETURN_EXIT = 255
 };
+
+struct states
+{
+    bool print_audio_queue;
+};
+global_variable struct states state;
+
+/* Sound  data */
+global_variable i32 SamplesPerSecond;
+global_variable i32 BytesPerSample;
+global_variable u32 RunningSampleIndex;
+global_variable i32 ToneHz;
+global_variable i16 Amplitude;
+global_variable i32 SecondaryBufferSize;
+// i32 BytesPerFrame;
+
+global_variable i32 SquareWavePeriod;
+global_variable i32 HalfSquareWavePeriod;
+
+
+internal void
+init_globals()
+{
+    SamplesPerSecond = 48000;
+    ToneHz = 440;
+    Amplitude = 2000;
+    RunningSampleIndex = 0;
+    SquareWavePeriod = SamplesPerSecond / ToneHz;
+    HalfSquareWavePeriod = SquareWavePeriod/2;
+    BytesPerSample = 2 * sizeof(i16);
+    SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
+    // i32 BytesPerFrame;
+    // i32 buffer_size = SamplesPerSecond * BytesPerSample / FramesPerSecond;
+}
+
 
 struct offscreen_buffer
 {
@@ -44,6 +90,17 @@ struct window_dimension
     int height;
 };
 
+global_variable struct offscreen_buffer GlobalBackBuffer;
+global_variable u8 red = 0;
+global_variable f32 XOffset = 0.f;
+global_variable f32 YOffset = 0.f;
+// global_variable i32 FramesPerSecond = 60;
+
+/* Input data */
+#define MAX_CONTROLLERS 4
+SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
+SDL_Haptic *RumbleHandles[MAX_CONTROLLERS];
+
 struct audio_ring_buffer
 {
     i32 size;
@@ -51,245 +108,278 @@ struct audio_ring_buffer
     i32 play_cursor;
     void * data;
 };
+global_variable struct audio_ring_buffer AudioRingBuffer;
+global_variable SDL_AudioDeviceID adev;
 
-struct states
+
+internal void
+AudioCallback(void *userdata, u8 *audiodata, i32 length)
 {
-    bool print_audio_queue;
-};
+    struct audio_ring_buffer *ringbuffer = (struct audio_ring_buffer *)userdata;
 
-/*
- * PROTOTYPES
- */
-
-void init_globals(void);
-SDL_Window * InitGame(u16 screen_width, u16 screen_height);
-void ExitGame(SDL_Window *window);
-i32  HandleEvent(const SDL_Event event);
-i32  HandleWindow(const SDL_Event event);
-i32  HandleKey(const SDL_Event event);
-void HandleController(void);
-struct window_dimension WindowGetDimension(SDL_Window *window);
-static int ResizeBackBuffer(SDL_Window *window, u16 width, u16 height);
-static int UpdateWindow(SDL_Window *window);
-static int RenderWeirdGradient(SDL_Window *window, i16 xoffset, i16 yoffset);
-i32  GameControllersInit();
-void GameControllersQuit();
-
-SDL_AudioDeviceID InitAudioQueue(i32 SamplesPerSecond, i32 BufferSize);
-void PlaySquareWaveQueue(SDL_AudioDeviceID audiodev, i32 tone, i32 amplitude);
-
-// SDL_AudioDeviceID InitAudioCallback(i32 SamplesPerSecond, i32 BufferSize);
-// void PlaySquareWaveCallback(SDL_AudioDeviceID audiodev, i32 tone, i32 amplitude);
-// void AudioCallback(void *userdata, u8 *audiodata, int length);
-
-
-/*
- * GLOBAL STUFF
- */
-
-/* Global state */
-struct states state;
-
-/* Video data */
-struct offscreen_buffer GlobalBackBuffer;
-u8 red = 0;
-f32 XOffset = 0.f;
-f32 YOffset = 0.f;
-i32 FramesPerSecond = 60;
-
-/* Input data */
-#define MAX_CONTROLLERS 4
-SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
-SDL_Haptic *RumbleHandles[MAX_CONTROLLERS];
-
-/* Sound  data */
-i32 SamplesPerSecond = 48000;
-i32 BytesPerSample;
-u32 RunningSampleIndex;
-i32 ToneHz = 440;
-i16 Amplitude = 2000;
-
-#if 0
-struct audio_ring_buffer AudioRingBuffer;
-i32 SecondaryBufferSize;
-i32 BytesPerFrame;
-SDL_AudioDeviceID audiodev;
-#endif
-
-
-void init_globals()
-{
-    BytesPerSample = 2 * sizeof(i16);
-}
-
-/*
- * BEGIN CODE
- */
-int
-main(void)
-{
-    i32 exitval = EXIT_FAILURE;
-    i32 retval = RETURN_SUCCESS;
-
-    SDL_Window *window = InitGame(800, 600);
-    if(!window) {
-        goto __EXIT__;
-    }
-
-    /* DIE! */
-    init_globals();
-
-    // Queue Buffer size
-    i32 buffer_size = SamplesPerSecond * BytesPerSample / FramesPerSecond;
-    SDL_AudioDeviceID audiodev = InitAudioQueue(SamplesPerSecond, buffer_size);
-    bool SoundIsPlaying = false;
-#if 0
-    SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
-    audiodev = InitAudioCallback(SamplesPerSecond, BytesPerFrame);
-#endif
-
-    struct window_dimension wdim = WindowGetDimension(window);
-    ResizeBackBuffer(window, wdim.width, wdim.height);
-    bool running = true;
-    while(running == true)
+    i32 region1size = (i32)length;
+    i32 region2size = (i32)0;
+    /* Not enough space on ring buffer region */
+    if ( (ringbuffer->play_cursor + length) > ringbuffer->size)
     {
-        state.print_audio_queue = false;
-        SDL_Event event;
-        while(SDL_PollEvent(&event))
-        {
-           retval = HandleEvent(event);
-           if(retval == RETURN_EXIT)
-           {
-               running = false;
-           }
-        }
-        HandleController();
-
-        RenderWeirdGradient(window, XOffset, YOffset);
-
-        if(!SoundIsPlaying)
-        {
-            SDL_PauseAudioDevice(audiodev, 0);
-            SoundIsPlaying = true;
-        } else {
-            PlaySquareWaveQueue(audiodev, ToneHz, Amplitude);
-            //PlaySquareWaveCallback(audiodev, ToneHz, Amplitude);
-        }
-
-        if(state.print_audio_queue == true)
-        {
-             SDL_Log("Audio Queue: %d  - Target: %d\n", SDL_GetQueuedAudioSize(audiodev), SamplesPerSecond*BytesPerSample);
-        }
-
-        UpdateWindow(window);
-
-        ++XOffset;
-        YOffset+=.75;
+        region1size = ringbuffer->size - ringbuffer->play_cursor;
+        region2size = length - region1size;
     }
 
-    exitval = EXIT_SUCCESS;
-__EXIT__:
-    if (audiodev > 0)
-        SDL_CloseAudioDevice(audiodev);
-    ExitGame(window);
-    return exitval;
+    memcpy(audiodata, (u8*)(ringbuffer->data) + ringbuffer->play_cursor, region1size);
+    // Why not audiodata + region1size?
+    memcpy(&audiodata[region1size], ringbuffer->data, region2size);
+    ringbuffer->play_cursor = (ringbuffer->play_cursor + length) % ringbuffer->size;
+    ringbuffer->write_cursor = (ringbuffer->play_cursor + 2048) % ringbuffer->size;
 }
 
 
-/*
- * FUNCTIONS
- */
-
-SDL_Window *
-InitGame(u16 screen_width, u16 screen_height)
+internal SDL_AudioDeviceID
+InitAudioCallback(i32 SamplesPerSecond, i32 BufferSize)
 {
-    // TODO: Assert Window not null
-    // TODO: Assert widht/height < 4096
-    i32 retval;
-    i32 sdl_flags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC | SDL_INIT_AUDIO;
-    i32 wnd_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
-    i32 rnd_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
+    SDL_AudioSpec AudioSettings = {0};
+    AudioSettings.freq = SamplesPerSecond;
+    AudioSettings.format = AUDIO_S16LSB;
+    AudioSettings.channels = 2;
+    AudioSettings.samples = 1024;
+    AudioSettings.callback = &AudioCallback;
+    AudioSettings.userdata = &AudioRingBuffer;
 
-    retval = SDL_Init(sdl_flags);
-    if(retval < 0)
-    {
-        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
-                      "%s: SDL_Init(): %s\n",
-                      __func__, SDL_GetError());
-        return NULL;
-    }
-
-    SDL_Window *window;
-    window = SDL_CreateWindow("HMH",
-                              SDL_WINDOWPOS_UNDEFINED,
-                              SDL_WINDOWPOS_UNDEFINED,
-                              screen_width,
-                              screen_height,
-                              wnd_flags);
-    if(!window)
+    AudioRingBuffer.size = BufferSize;
+    AudioRingBuffer.play_cursor = 0;
+    AudioRingBuffer.write_cursor = 0;
+    AudioRingBuffer.data = malloc(BufferSize);
+    if(!AudioRingBuffer.data)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "%s: SDL_CreateWindow(): %s\n",
-                __func__, SDL_GetError());
-        return NULL;
+                "%s: malloc(AudioRingBuffer.data)\n", __func__);
+        exit(EXIT_FAILURE);
     }
 
-    SDL_Renderer *renderer;
-    renderer = SDL_CreateRenderer(window, -1, rnd_flags);
-    if(!renderer)
+    adev = SDL_OpenAudioDevice(NULL, 0, &AudioSettings, NULL, 0);
+    SDL_Log("%s: Audio opened: freq: %d, %d channels, %d bufsz\n",
+            __func__, AudioSettings.freq, AudioSettings.channels, AudioSettings.samples);
+
+    if (AudioSettings.format != AUDIO_S16LSB)
     {
         SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
-                "%s: SDL_CreateRenderer(): %s\n",
-                __func__,
-                SDL_GetError());
-        return NULL;
+                "%s: SDL_OpenAudio(): Could not get S16LE format\n",
+                __func__);
+        SDL_CloseAudioDevice(adev);
+        return 0;
+    } else {
+        return adev;
     }
-
-    SDL_RenderSetLogicalSize(renderer, screen_width, screen_height);
-
-    GameControllersInit();
-
-    return window;
 }
 
 
-void
-ExitGame(SDL_Window *window)
+internal void
+PlaySquareWaveCallback(SDL_AudioDeviceID adev, i32 tone, i32 amplitude)
 {
-    // TODO: Assert Window not null
-    SDL_Log ("Exiting\n");
-    GameControllersQuit();
-    SDL_Renderer *renderer = SDL_GetRenderer(window);
-    if (GlobalBackBuffer.memory)    free(GlobalBackBuffer.memory);
-    if (GlobalBackBuffer.texture)   SDL_DestroyTexture(GlobalBackBuffer.texture);
-    if (renderer)                   SDL_DestroyRenderer(renderer);
-    if (window)                     SDL_DestroyWindow(window);
-#if 0
-    if (AudioRingBuffer.data)            free(AudioRingBuffer.data);
-#endif
-    SDL_Quit();
-    return;
-}
+    /* Square wave definition */
+    SquareWavePeriod = SamplesPerSecond / tone;
+    HalfSquareWavePeriod = SquareWavePeriod / 2;
 
-
-i32
-HandleEvent(const SDL_Event event)
-{
-    // TODO: Assert eevent not null
-    i32 retval = RETURN_SUCCESS;
-    switch(event.type)
+    /* Defining ring buffer sizes based on audio to play */
+    SDL_LockAudioDevice(adev);
+    i32 ByteToLock = (RunningSampleIndex * BytesPerSample) % SecondaryBufferSize;
+    i32 BytesToWrite = 0;
+    if(ByteToLock == AudioRingBuffer.play_cursor)
     {
-        case SDL_QUIT:          retval = RETURN_EXIT; break;
-        case SDL_WINDOWEVENT:   retval = HandleWindow(event); break;
-        case SDL_KEYUP:         retval = HandleKey(event); break;
-        case SDL_KEYDOWN:       retval = HandleKey(event); break;
-        default: break;
+        BytesToWrite = SecondaryBufferSize;
     }
-    return retval;
+    else if (ByteToLock > AudioRingBuffer.play_cursor)
+    {
+        BytesToWrite = (SecondaryBufferSize - ByteToLock);
+        BytesToWrite += AudioRingBuffer.play_cursor;
+    }
+    else
+    {
+        BytesToWrite = AudioRingBuffer.play_cursor - ByteToLock;
+    }
+    assert(BytesToWrite >= 0);
+
+    void *Region1 = (u8*)AudioRingBuffer.data + ByteToLock;
+    i32 Region1Size = BytesToWrite;
+    if ( (Region1Size + ByteToLock) > SecondaryBufferSize)
+    {
+        Region1Size = SecondaryBufferSize - ByteToLock;
+    }
+
+    void *Region2 = AudioRingBuffer.data;
+    i32 Region2Size = BytesToWrite - Region1Size;
+    SDL_UnlockAudioDevice(adev);
+
+    i32 Region1SampleCount = Region1Size / BytesPerSample;
+    i16 *SampleOut = (i16*)Region1;
+    for(i32 SampleIndex = 0; SampleIndex < Region1SampleCount; ++SampleIndex)
+    {
+        i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ? amplitude : -amplitude;
+        *SampleOut++ = SampleValue;     // L
+        *SampleOut++ = SampleValue;     // R
+    }
+
+    i32 Region2SampleCount = Region2Size / BytesPerSample;
+    SampleOut = (i16*) Region2;
+    for(i32 SampleIndex = 0; SampleIndex < Region2SampleCount; ++SampleIndex)
+    {
+        i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ? amplitude : -amplitude;
+        *SampleOut++ = SampleValue;     // L
+        *SampleOut++ = SampleValue;     // R
+    }
 }
 
 
-i32
+internal struct window_dimension
+WindowGetDimension(SDL_Window *window)
+{
+    struct window_dimension result;
+    SDL_GetWindowSize(window, &result.width, &result.height);
+    return result;
+}
+
+
+internal int
+RenderWeirdGradient(struct offscreen_buffer *buffer, i16 blueoffset, i16 greenoffset)
+{
+
+    // TODO: ASSERT WINDOW NOT NULL
+    // TODO: ASSERT 0 < BLUEOFFSET GREEN OFFSET < 255
+    u8 *row = (u8 *)buffer->memory;
+    for(int y = 0; y < buffer->height; ++y)
+    {
+        u32 *pixel = (u32*)row;
+        for(int x = 0; x < buffer->width; ++x)
+        {
+            u8 blue = (x + blueoffset);
+            u8 green = (y + greenoffset);
+            *pixel++ = ((red << 16)  |
+                        (green << 8) |
+                        (blue << 0));
+        }
+        row += buffer->pitch;
+    }
+    return RETURN_SUCCESS;
+}
+
+
+internal int
+ResizeBackBuffer(struct offscreen_buffer *buffer, SDL_Window *window, u16 width, u16 height)
+{
+    // TODO: ASSERT WINDOW not null
+    // TODO: ASSERT 0 < width/height <= 4096
+
+    int bytes_per_pixel = SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888);
+    if(buffer->memory)
+    {
+        free(buffer->memory);
+        //munmap(buffer->memory, buffer->width * buffer->height * bytes_per_pixel);
+    }
+
+    if(buffer->texture)
+    {
+        SDL_DestroyTexture(buffer->texture);
+    }
+
+    SDL_Renderer *renderer = SDL_GetRenderer(window);
+    buffer->texture = SDL_CreateTexture(renderer,
+                                        SDL_PIXELFORMAT_ARGB8888,
+                                        SDL_TEXTUREACCESS_STREAMING,
+                                        width,
+                                        height);
+
+    if(!buffer->texture)
+    {
+        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
+                      "%s: SDL_CreateTexture(GlobalBackBuffer): %s\n",
+                      __func__, SDL_GetError());
+        return RETURN_FAILURE;
+    }
+    buffer->width = width;
+    buffer->height = height;
+    buffer->pitch = width * bytes_per_pixel;
+    buffer->memory = malloc(buffer->width * buffer->height * bytes_per_pixel);
+    // BitmapMemory = mmap(NULL,
+    //                     buffer->width * buffer->height * bytes_per_pixel,
+    //                     PROT_READ | PROT_WRITE,
+    //                     MAP_PRIVATE | MAP_ANONYMOUS,
+    //                     -1,
+    //                     0);
+    if(!buffer->memory)
+    {
+        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
+                      "%s: malloc(buffer->memory): %s\n",
+                      __func__, SDL_GetError());
+        return RETURN_FAILURE;
+    }
+    return RETURN_SUCCESS;
+}
+
+
+internal int
+UpdateWindow(SDL_Window *window, struct offscreen_buffer *buffer)
+{
+    // TODO: ASSERT WINDOW not null
+    // TODO: Handle all those "ifs"  with SDL_Asserts.
+    i32 retval = RETURN_FAILURE;
+#if 0
+    if(!buffer->texture)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                "%s: GlobalBackBuffer Texture NULL, nothing to update\n",
+                __func__);
+        return retval;
+    }
+#endif
+
+    retval = SDL_UpdateTexture(buffer->texture,
+                               NULL,
+                               buffer->memory,
+                               buffer->pitch);
+
+    if(retval < 0)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                "%s: SDL_UpdateTexture(GlobalBackBuffer): %s\n",
+                __func__, SDL_GetError());
+        return retval;
+    }
+
+    SDL_Renderer *renderer = SDL_GetRenderer(window);
+#if 0
+    if(!renderer)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                "%s: SDL_GetRenderer(): %s\n",
+                __func__, SDL_GetError());
+        return RETURN_FAILURE;
+    }
+#endif
+
+    retval = SDL_RenderCopy(renderer, buffer->texture, NULL, NULL);
+#if 0
+    if(retval < 0)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                "%s: SDL_RenderCopy(GlobalBackBuffer.texture): %s\n",
+                __func__, SDL_GetError());
+        return retval;
+    }
+#endif
+
+    SDL_RenderPresent(renderer);
+    return RETURN_SUCCESS;
+}
+
+
+internal i32
+HandleQuit()
+{
+    return RETURN_EXIT;
+}
+
+
+internal i32
 HandleWindow(const SDL_Event event)
 {
     // TODO: Assert eevent not null
@@ -305,7 +395,6 @@ HandleWindow(const SDL_Event event)
         {
             SDL_Log("%s: Window size changed (%d, %d)\n",
                     __func__, event.window.data1, event.window.data2);
-
             //SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
             //ResizeBackBuffer(window, event.window.data1, event.window.data2);
         } break;
@@ -334,7 +423,7 @@ HandleWindow(const SDL_Event event)
         {
             SDL_Log("%s: Window exposed\n", __func__);
             SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
-            UpdateWindow(window);
+            UpdateWindow(window, &GlobalBackBuffer);
         } break;
 
         case SDL_WINDOWEVENT_CLOSE:
@@ -358,7 +447,7 @@ HandleWindow(const SDL_Event event)
 }
 
 
-i32
+internal i32
 HandleKey(const SDL_Event event)
 {
     SDL_Keycode KeyCode = event.key.keysym.sym;
@@ -371,9 +460,12 @@ HandleKey(const SDL_Event event)
     if (event.key.state == SDL_RELEASED)
     {
         wasDown = true;
-    } else if (event.key.repeat != 0) {
+    }
+    else if (event.key.repeat != 0)
+    {
         wasDown = true;
     }
+
     if (event.key.repeat == 0)
     {
         if(KeyCode == SDLK_w)
@@ -420,6 +512,7 @@ HandleKey(const SDL_Event event)
             {
                 SDL_Log("Escape Was down\n");
             }
+            // This closes the program
             // return RETURN_EXIT;
         }
         else if((KeyCode == SDLK_RETURN) && (KeyMod & KMOD_ALT))
@@ -428,6 +521,7 @@ HandleKey(const SDL_Event event)
         }
         else if((KeyCode == SDLK_F4) && (KeyMod & KMOD_ALT))
         {
+            SDL_Log("ALT-F4 pressed\n");
             return RETURN_EXIT;
         }
         else
@@ -439,162 +533,68 @@ HandleKey(const SDL_Event event)
 }
 
 
-static int
-ResizeBackBuffer(SDL_Window *window, u16 width, u16 height)
+internal i32
+HandleEvent(const SDL_Event event)
 {
-    // TODO: ASSERT WINDOW not null
-    // TODO: ASSERT 0 < width/height <= 4096
-
-    if(GlobalBackBuffer.memory)
+    // TODO: Assert eevent not null
+    i32 retval = RETURN_SUCCESS;
+    switch(event.type)
     {
-        free(GlobalBackBuffer.memory);
-        //munmap(GlobalBackBuffer.memory,
-        //       GlobalBackBuffer.width * GlobalBackBuffer.height * SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888));
+        case SDL_QUIT:          retval = HandleQuit(); break;
+        case SDL_WINDOWEVENT:   retval = HandleWindow(event); break;
+        case SDL_KEYUP:         retval = HandleKey(event); break;
+        case SDL_KEYDOWN:       retval = HandleKey(event); break;
+        default: break;
     }
-
-    if(GlobalBackBuffer.texture)
-    {
-        SDL_DestroyTexture(GlobalBackBuffer.texture);
-    }
-
-    GlobalBackBuffer.width = width;
-    GlobalBackBuffer.height = height;
-
-    SDL_Renderer *renderer = SDL_GetRenderer(window);
-    GlobalBackBuffer.texture = SDL_CreateTexture(renderer,
-                                                  SDL_PIXELFORMAT_ARGB8888,
-                                                  SDL_TEXTUREACCESS_STREAMING,
-                                                  GlobalBackBuffer.width,
-                                                  GlobalBackBuffer.height);
-    if(!GlobalBackBuffer.texture)
-    {
-        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
-                      "%s: SDL_CreateTexture(GlobalBackBuffer): %s\n",
-                      __func__, SDL_GetError());
-        return RETURN_FAILURE;
-    }
-
-    // Later benchmark vs mmap
-    // TODO: GET PIXEL FORMAT FROM TEXTURE
-    GlobalBackBuffer.memory = malloc(GlobalBackBuffer.width * GlobalBackBuffer.height * SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888));
-    // BitmapMemory = mmap(NULL,
-    //                     GlobalBackBuffer.width * GlobalBackBuffer.height * SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888),
-    //                     PROT_READ | PROT_WRITE,
-    //                     MAP_ANONYMOUS | MAP_PRIVATE,
-    //                     -1,
-    //                     0);
-    if(!GlobalBackBuffer.memory)
-    {
-        SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
-                      "%s: malloc(GlobalBackBuffer.memory): %s\n",
-                      __func__, SDL_GetError());
-        return RETURN_FAILURE;
-    }
-    return RETURN_SUCCESS;
+    return retval;
 }
 
 
-static int
-UpdateWindow(SDL_Window *window)
+internal i32
+GameControllersInit()
 {
-    // TODO: ASSERT WINDOW not null
-    i32 retval = RETURN_FAILURE;
-    if(!GlobalBackBuffer.texture) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "%s: GlobalBackBuffer Texture NULL, nothing to update\n",
-                __func__);
-        return retval;
-    }
-
-    retval = SDL_UpdateTexture(GlobalBackBuffer.texture,
-                               NULL,
-                               GlobalBackBuffer.memory,
-                               GlobalBackBuffer.width * SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888));
-
-    if(retval < 0)
+    int njoys = SDL_NumJoysticks();
+    int ControllerIndex = 0;
+    for (int i=0; i < njoys; ++i)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "%s: SDL_UpdateTexture(GlobalBackBuffer): %s\n",
-                __func__, SDL_GetError());
-        return retval;
-    }
-
-    SDL_Renderer *renderer = SDL_GetRenderer(window);
-    if(!renderer)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "%s: SDL_GetRenderer(): %s\n",
-                __func__, SDL_GetError());
-        return RETURN_FAILURE;
-    }
-
-    retval = SDL_RenderCopy(renderer, GlobalBackBuffer.texture, NULL, NULL);
-    if(retval < 0)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "%s: SDL_RenderCopy(GlobalBackBuffer.texture): %s\n",
-                __func__, SDL_GetError());
-        return retval;
-    }
-
-    SDL_RenderPresent(renderer);
-    return RETURN_SUCCESS;
-}
-
-
-static int
-RenderWeirdGradient(SDL_Window *window, i16 blueoffset, i16 greenoffset)
-{
-
-    // TODO: ASSERT WINDOW NOT NULL
-    // TODO: ASSERT BLUEOFFSET GREEN OFFSET < 255
-    i32 retval = RETURN_FAILURE;
-
-    SDL_Renderer *renderer = SDL_GetRenderer(window);
-    if(!renderer)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "%s: SDL_GetRenderer(): %s\n",
-                __func__, SDL_GetError());
-        return retval;
-    }
-
-    SDL_RendererInfo info;
-    retval = SDL_GetRendererInfo(renderer, &info);
-    if(retval < 0)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "%s: SDL_GetRendererInfo(): %s\n",
-                __func__, SDL_GetError());
-        return retval;
-    }
-
-    i32 pitch = GlobalBackBuffer.width * SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888);
-
-    u8 *row = (u8 *)GlobalBackBuffer.memory;
-    for(int y = 0; y < GlobalBackBuffer.height; ++y)
-    {
-        u32 *pixel = (u32*)row;
-        for(int x = 0; x < GlobalBackBuffer.width; ++x)
+        if(ControllerIndex >= MAX_CONTROLLERS)
         {
-            u8 blue = (x + blueoffset);
-            u8 green = (y + greenoffset);
-            *pixel++ = ((red << 16)  |
-                        (green << 8) |
-                        (blue << 0));
+            break;
         }
-        row += pitch;
+        if(SDL_IsGameController(i))
+        {
+            ControllerHandles[ControllerIndex] = SDL_GameControllerOpen(i);
+            RumbleHandles[ControllerIndex] = SDL_HapticOpen(i);
+            if(SDL_HapticRumbleInit(RumbleHandles[ControllerIndex]) < 0)
+            {
+                SDL_HapticClose(RumbleHandles[ControllerIndex]);
+                RumbleHandles[ControllerIndex] = NULL;
+            }
+            ControllerIndex++;
+        }
     }
-    return RETURN_SUCCESS;
+    return ControllerIndex;
 }
 
 
-struct window_dimension
-WindowGetDimension(SDL_Window *window)
+internal void
+GameControllersQuit()
 {
-    struct window_dimension result;
-    SDL_GetWindowSize(window, &result.width, &result.height);
-    return result;
+    for (int i = 0; i < MAX_CONTROLLERS; i++)
+    {
+        SDL_Log("%s: %d Controller @%p \t Rumble @%p\n", __func__, i,
+                (void*)ControllerHandles[i], (void*)RumbleHandles[i]);
+        if (ControllerHandles[i]) {
+            SDL_Log("%s: Closing Controller %d @%p\n", __func__, i, (void*)ControllerHandles[i]);
+            SDL_GameControllerClose(ControllerHandles[i]);
+            ControllerHandles[i] = NULL;
+        }
+        if (RumbleHandles[i] != NULL) {
+            SDL_Log("%s: Closing Haptic %d @%p\n", __func__, i, (void*)RumbleHandles[i]);
+            SDL_HapticClose(RumbleHandles[i]);
+            RumbleHandles[i] = NULL;
+        }
+    }
 }
 
 
@@ -637,13 +637,18 @@ void HandleController(void)
             lstickY   = SDL_GameControllerGetAxis(ControllerHandles[i], SDL_CONTROLLER_AXIS_LEFTY);
 
         } else {
-            // TODO: Controller not plugged int
+            // TODO: Controller not plugged in (CLOSE IT!)
         }
 
         if (lshoulder == true) {
             coeff = 0.06f;
         } else {
             coeff = 0.02f;
+        }
+
+        if (back == true)
+        {
+            //
         }
 
         if(start == true)
@@ -721,239 +726,142 @@ void HandleController(void)
 }
 
 
-i32
-GameControllersInit()
+internal SDL_Window *
+InitGame(u16 screen_width, u16 screen_height)
 {
-    int njoys = SDL_NumJoysticks();
-    int ControllerIndex = 0;
-    for (int i=0; i < njoys; ++i)
-    {
-        if(ControllerIndex >= MAX_CONTROLLERS)
-        {
-            break;
-        }
-        if(SDL_IsGameController(i))
-        {
-            ControllerHandles[ControllerIndex] = SDL_GameControllerOpen(i);
-            // RumbleHandles[ControllerIndex] = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(ControllerHandles[ControllerIndex]));
-            RumbleHandles[ControllerIndex] = SDL_HapticOpen(i);
-            if(SDL_HapticRumbleInit(RumbleHandles[ControllerIndex]) < 0)
-            {
-                SDL_HapticClose(RumbleHandles[ControllerIndex]);
-                RumbleHandles[ControllerIndex] = NULL;
-            }
-            ControllerIndex++;
-        }
-    }
-    return ControllerIndex;
-}
+    // TODO: Assert Window not null
+    // TODO: Assert widht/height < 4096
+    i32 retval;
+    i32 sdl_flags = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC | SDL_INIT_AUDIO;
+    i32 wnd_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
+    i32 rnd_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
 
-
-void
-GameControllersQuit()
-{
-    for (int i = 0; i < MAX_CONTROLLERS; i++)
-    {
-        SDL_Log("%s: %d Controller @%p \t Rumble @%p\n", __func__, i,
-                (void*)ControllerHandles[i], (void*)RumbleHandles[i]);
-        if (ControllerHandles[i]) {
-            SDL_Log("%s: Closing Controller %d @%p\n", __func__, i, (void*)ControllerHandles[i]);
-            SDL_GameControllerClose(ControllerHandles[i]);
-            ControllerHandles[i] = NULL;
-        }
-        if (RumbleHandles[i] != NULL) {
-            SDL_Log("%s: Closing Haptic %d @%p\n", __func__, i, (void*)RumbleHandles[i]);
-            SDL_HapticClose(RumbleHandles[i]);
-            RumbleHandles[i] = NULL;
-        }
-    }
-}
-
-
-SDL_AudioDeviceID
-InitAudioQueue(i32 samples_per_second, i32 bufsz)
-{
-    SDL_AudioSpec AudioSettings = {0};
-    AudioSettings.freq = samples_per_second;
-    AudioSettings.format = AUDIO_S16LSB;
-    AudioSettings.channels = 2;
-    AudioSettings.samples = bufsz;
-
-    SDL_AudioDeviceID adev = SDL_OpenAudioDevice(NULL, 0, &AudioSettings, NULL, 0);
-    SDL_Log("%s: Audio opened: freq: %d, %d channels, %d bufsz\n",
-            __func__, AudioSettings.freq, AudioSettings.channels, AudioSettings.samples);
-
-    if (AudioSettings.format != AUDIO_S16LSB)
+    retval = SDL_Init(sdl_flags);
+    if(retval < 0)
     {
         SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
-                      "%s: SDL_OpenAudio(): Could not get S16LE format\n",
-                      __func__);
-        SDL_CloseAudioDevice(adev);
-        return 0;
-    } else {
-         return adev;
-    }
-}
-
-
-void
-PlaySquareWaveQueue (SDL_AudioDeviceID adev, i32 tone, i32 amplitude)
-{
-    /*
-     * TODO: Isn't possible retrieve AudioSpec from a audiodev, we are
-     * using globals for now....
-     */
-
-    /* Square wave definition */
-    i32 square_wave_period = SamplesPerSecond / tone;
-    i32 half_square_wave_period = square_wave_period / 2;
-
-    /* Some funny audio sampling math */
-    //i32 SamplesPerFrame = SamplesPerSecond/FramesPerSecond;
-    i32 target_queue_bytes = SamplesPerSecond * BytesPerSample;
-    i32 queue_size_bytes = SDL_GetQueuedAudioSize(adev);
-    i32 bytes_to_write = target_queue_bytes - queue_size_bytes;
-
-    /* Queue is starving */
-    if(bytes_to_write > 0)
-    {
-        void * sound_buffer = malloc (bytes_to_write);
-        if(!sound_buffer)
-        {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                    "%s: malloc(SoundBuffer)\n", __func__);
-            exit(EXIT_FAILURE);
-        }
-
-        i16  * sample_out   = (i16 *) sound_buffer;
-        i32    sample_count = bytes_to_write / BytesPerSample;
-
-        for(i32 sample_index = 0; sample_index < sample_count; ++sample_index)
-        {
-            i16 sample_value = ((RunningSampleIndex++ / half_square_wave_period) % 2) ? amplitude : -amplitude;
-            *sample_out++ = sample_value;     // L
-            *sample_out++ = sample_value;     // R
-        }
-        SDL_QueueAudio(adev, sound_buffer, bytes_to_write);
-        free(sound_buffer);
-    }
-}
-
-
-#if 0
-void
-AudioCallback(void *userdata, u8 *audiodata, i32 length)
-{
-    struct audio_ring_buffer *ringbuffer = (struct audio_ring_buffer *)userdata;
-
-    i32 region1size = (i32)length;
-    i32 region2size = (i32)0;
-    /* Not enough space on ring buffer region */
-    if ( (ringbuffer->play_cursor + length) > ringbuffer->size)
-    {
-        region1size = ringbuffer->size - ringbuffer->play_cursor;
-        region2size = length - region1size;
+                      "%s: SDL_Init(): %s\n",
+                      __func__, SDL_GetError());
+        return NULL;
     }
 
-    memcpy(audiodata, (u8*)(ringbuffer->data) + ringbuffer->play_cursor, region1size);
-    // Why not audiodata + region1size?
-    memcpy(&audiodata[region1size], ringbuffer->data, region2size);
-    ringbuffer->play_cursor = (ringbuffer->play_cursor + length) % ringbuffer->size;
-    ringbuffer->write_cursor = (ringbuffer->play_cursor + 2048) % ringbuffer->size;
-}
-
-SDL_AudioDeviceID
-InitAudioCallback(i32 SamplesPerSecond, i32 BufferSize)
-{
-    SDL_AudioSpec AudioSettings = {0};
-    AudioSettings.freq = SamplesPerSecond;
-    AudioSettings.format = AUDIO_S16LSB;
-    AudioSettings.channels = 2;
-    AudioSettings.samples = 1024;
-    AudioSettings.callback = &AudioCallback;
-    AudioSettings.userdata = &AudioRingBuffer;
-
-    AudioRingBuffer.size = BufferSize;
-    AudioRingBuffer.play_cursor = 0;
-    AudioRingBuffer.write_cursor = 0;
-    AudioRingBuffer.data = malloc(BufferSize);
-    if(!AudioRingBuffer.data)
+    SDL_Window *window;
+    window = SDL_CreateWindow("HMH",
+                              SDL_WINDOWPOS_UNDEFINED,
+                              SDL_WINDOWPOS_UNDEFINED,
+                              screen_width,
+                              screen_height,
+                              wnd_flags);
+    if(!window)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "%s: malloc(AudioRingBuffer.data)\n", __func__);
-        exit(EXIT_FAILURE);
+                "%s: SDL_CreateWindow(): %s\n",
+                __func__, SDL_GetError());
+        return NULL;
     }
 
-    SDL_AudioDeviceID adev = SDL_OpenAudioDevice(NULL, 0, &AudioSettings, NULL, 0);
-    SDL_Log("%s: Audio opened: freq: %d, %d channels, %d bufsz\n",
-            __func__, AudioSettings.freq, AudioSettings.channels, AudioSettings.samples);
-
-    if (AudioSettings.format != AUDIO_S16LSB)
+    SDL_Renderer *renderer;
+    renderer = SDL_CreateRenderer(window, -1, rnd_flags);
+    if(!renderer)
     {
         SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
-                "%s: SDL_OpenAudio(): Could not get S16LE format\n",
-                __func__);
-        SDL_CloseAudioDevice(adev);
-        return 0;
-    } else {
-        return adev;
+                "%s: SDL_CreateRenderer(): %s\n",
+                __func__,
+                SDL_GetError());
+        return NULL;
     }
+
+    SDL_RenderSetLogicalSize(renderer, screen_width, screen_height);
+
+    GameControllersInit();
+
+    return window;
 }
 
 
-void
-PlaySquareWaveCallback(SDL_AudioDeviceID adev, i32 tone, i32 amplitude)
+internal void
+ExitGame(SDL_Window *window)
 {
-    /* Square wave definition */
-    i32 SquareWavePeriod = SamplesPerSecond / tone;
-    i32 HalfSquareWavePeriod = SquareWavePeriod / 2;
-
-    /* Defining ring buffer sizes based on audio to play */
-    SDL_LockAudioDevice(adev);
-    i32 ByteToLock = (RunningSampleIndex * BytesPerSample) % SecondaryBufferSize;
-    i32 BytesToWrite = 0;
-    if(ByteToLock == AudioRingBuffer.play_cursor)
-    {
-        BytesToWrite = SecondaryBufferSize;
-    }
-    else if (ByteToLock > AudioRingBuffer.play_cursor)
-    {
-        BytesToWrite = (SecondaryBufferSize - ByteToLock);
-        BytesToWrite += AudioRingBuffer.play_cursor;
-    }
-    else
-    {
-        BytesToWrite = AudioRingBuffer.play_cursor - ByteToLock;
-    }
-    assert(BytesToWrite >= 0);
-
-    void *Region1 = (u8*)AudioRingBuffer.data + ByteToLock;
-    i32 Region1Size = BytesToWrite;
-    if ( (Region1Size + ByteToLock) > SecondaryBufferSize)
-    {
-        Region1Size = SecondaryBufferSize - ByteToLock;
-    }
-
-    void *Region2 = AudioRingBuffer.data;
-    i32 Region2Size = BytesToWrite - Region1Size;
-    SDL_UnlockAudioDevice(adev);
-
-    i32 Region1SampleCount = Region1Size / BytesPerSample;
-    i16 *SampleOut = (i16*)Region1;
-    for(int SampleIndex = 0; SampleIndex < Region1SampleCount; ++SampleIndex)
-    {
-        i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ? amplitude : -amplitude;
-        *SampleOut++ = SampleValue;     // L
-        *SampleOut++ = SampleValue;     // R
-    }
-
-    i32 Region2SampleCount = Region2Size / BytesPerSample;
-    SampleOut = (i16*) Region2;
-    for(i32 SampleIndex = 0; SampleIndex < Region2SampleCount; ++SampleIndex)
-    {
-        i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ? amplitude : -amplitude;
-        *SampleOut++ = SampleValue;     // L
-        *SampleOut++ = SampleValue;     // R
-    }
-}
+    // TODO: Assert Window not null
+    SDL_Log ("Exiting\n");
+    GameControllersQuit();
+    SDL_Renderer *renderer = SDL_GetRenderer(window);
+    // TODO: If mmap need to munmap
+    if (GlobalBackBuffer.memory)    free(GlobalBackBuffer.memory);
+    if (GlobalBackBuffer.texture)   SDL_DestroyTexture(GlobalBackBuffer.texture);
+    if (renderer)                   SDL_DestroyRenderer(renderer);
+    if (window)                     SDL_DestroyWindow(window);
+#if 0
+    if (AudioRingBuffer.data)            free(AudioRingBuffer.data);
 #endif
+    SDL_Quit();
+    return;
+}
+
+
+
+int
+main(void)
+{
+    i32 exitval = EXIT_FAILURE;
+    i32 retval = RETURN_SUCCESS;
+
+    SDL_Window *window = InitGame(800, 600);
+    if(!window) {
+        goto __EXIT__;
+    }
+
+    /* DIE! */
+    init_globals();
+
+    bool running = true;
+    struct window_dimension wdim = WindowGetDimension(window);
+    ResizeBackBuffer(&GlobalBackBuffer, window, wdim.width, wdim.height);
+
+    // Queue Buffer size
+    InitAudioCallback(SamplesPerSecond, SecondaryBufferSize);
+    bool SoundIsPlaying = false;
+
+    while(running == true)
+    {
+        state.print_audio_queue = false;
+        SDL_Event event;
+        while(SDL_PollEvent(&event))
+        {
+           retval = HandleEvent(event);
+           if(retval == RETURN_EXIT)
+           {
+               running = false;
+           }
+        }
+        HandleController();
+
+        RenderWeirdGradient(&GlobalBackBuffer, XOffset, YOffset);
+
+        if(!SoundIsPlaying)
+        {
+            SDL_PauseAudioDevice(adev, 0);
+            SoundIsPlaying = true;
+        } else {
+            PlaySquareWaveCallback(adev, ToneHz, Amplitude);
+        }
+
+        if(state.print_audio_queue == true)
+        {
+             SDL_Log("Audio Queue: %d  - Target: %d\n", SDL_GetQueuedAudioSize(adev), SamplesPerSecond*BytesPerSample);
+        }
+
+        UpdateWindow(window, &GlobalBackBuffer);
+
+        ++XOffset;
+        YOffset+=.75;
+    }
+
+    exitval = EXIT_SUCCESS;
+__EXIT__:
+    if (adev > 0)
+        SDL_CloseAudioDevice(adev);
+    ExitGame(window);
+    return exitval;
+}
+
