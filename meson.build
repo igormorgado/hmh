@@ -6,6 +6,8 @@ project('main', 'c',
                    ],
 )
 
+add_global_arguments(['-Wno-unused-function'], language: 'c')
+
 incdir = include_directories('include')
 
 subdir('src')
