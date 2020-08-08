@@ -5,6 +5,8 @@
 #include <SDL2/SDL.h>
 #include <assert.h>
 #include <sys/mman.h>
+#include <x86intrin.h>
+
 
 #define MININT(a, b)    ((a) < (b) ? (a) : (b))
 #define MAXINT(a, b)    ((a) > (b) ? (a) : (b))
@@ -47,7 +49,7 @@ enum RETURN_STATUS
 };
 
 
-struct offscreen_buffer
+struct game_offscreen_buffer
 {
     SDL_Texture *texture;
     void *memory;
@@ -62,8 +64,11 @@ struct window_dimension
     int height;
 };
 
-global_variable struct offscreen_buffer GlobalBackBuffer;
 global_variable u8 red = 0;
+
+#include "game.c"
+
+global_variable struct game_offscreen_buffer GlobalBackBuffer;
 global_variable f32 XOffset = 0.f;
 global_variable f32 YOffset = 0.f;
 // global_variable i32 FramesPerSecond = 60;
@@ -288,32 +293,9 @@ WindowGetDimension(SDL_Window *window)
 }
 
 
-internal int
-RenderWeirdGradient(struct offscreen_buffer *buffer, i16 blueoffset, i16 greenoffset)
-{
-
-    // TODO: ASSERT WINDOW NOT NULL
-    // TODO: ASSERT 0 < BLUEOFFSET GREEN OFFSET < 255
-    u8 *row = (u8 *)buffer->memory;
-    for(int y = 0; y < buffer->height; ++y)
-    {
-        u32 *pixel = (u32*)row;
-        for(int x = 0; x < buffer->width; ++x)
-        {
-            u8 blue = (x + blueoffset);
-            u8 green = (y + greenoffset);
-            *pixel++ = ((red << 16)  |
-                        (green << 8) |
-                        (blue << 0));
-        }
-        row += buffer->pitch;
-    }
-    return RETURN_SUCCESS;
-}
-
 
 internal int
-ResizeBackBuffer(struct offscreen_buffer *buffer, SDL_Window *window, u16 width, u16 height)
+ResizeBackBuffer(struct game_offscreen_buffer *buffer, SDL_Window *window, u16 width, u16 height)
 {
     // TODO: ASSERT WINDOW not null
     // TODO: ASSERT 0 < width/height <= 4096
@@ -366,7 +348,7 @@ ResizeBackBuffer(struct offscreen_buffer *buffer, SDL_Window *window, u16 width,
 
 
 internal int
-UpdateWindow(SDL_Window *window, struct offscreen_buffer *buffer)
+UpdateWindow(SDL_Window *window, struct game_offscreen_buffer *buffer)
 {
     // TODO: ASSERT WINDOW not null
     // TODO: Handle all those "ifs"  with SDL_Asserts.
@@ -842,7 +824,8 @@ main(void)
         goto __EXIT__;
     }
 
-    bool running = true;
+    u64 perf_count_frequency = SDL_GetPerformanceFrequency();
+
     struct window_dimension wdim = WindowGetDimension(window);
     ResizeBackBuffer(&GlobalBackBuffer, window, wdim.width, wdim.height);
 
@@ -861,30 +844,55 @@ main(void)
     PlaySineWaveCallback(0, global_sound_output.latency_sample_count * global_sound_output.bytes_per_sample);
     SDL_PauseAudioDevice(adev, 0);
 
+    u64 last_counter = SDL_GetPerformanceCounter();
+    u64 last_cycle_count = _rdtsc();
+
+    bool running = true;
     while(running == true)
     {
+        /* Handle Input */
         SDL_Event event;
         while(SDL_PollEvent(&event))
         {
-           retval = HandleEvent(event);
-           if(retval == RETURN_EXIT)
-           {
-               running = false;
-           }
+            /* TODO: PUT ON IF CLAUSE ? */
+            retval = HandleEvent(event);
+            if(retval == RETURN_EXIT)
+                running = false;
         }
         HandleController();
 
-        RenderWeirdGradient(&GlobalBackBuffer, XOffset, YOffset);
-
+        /* Play sound */
         i32 byte_to_lock  = 0;
         i32 bytes_to_write = 0;
         sound_get_cursors(adev, &byte_to_lock, &bytes_to_write);
         PlaySineWaveCallback(byte_to_lock, bytes_to_write);
 
+        /* Draw screen */
+        struct game_offscreen_buffer buffer = {};
+        buffer.memory = GlobalBackBuffer.memory;
+        buffer.width = GlobalBackBuffer.width;
+        buffer.height = GlobalBackBuffer.height;
+        buffer.pitch = GlobalBackBuffer.pitch;
+        GameUpdateAndRender(&buffer, XOffset, YOffset);
         UpdateWindow(window, &GlobalBackBuffer);
 
         ++XOffset;
         YOffset+=.75;
+
+        //u64 perf_count_frequency = SDL_GetPerformanceFrequency();
+        u64 end_cycle_count = _rdtsc();
+        u64 end_counter = SDL_GetPerformanceCounter();
+        u64 counter_elapsed = end_counter - last_counter;
+        u64 cycles_elapsed = end_cycle_count - last_cycle_count;
+
+        f64 ms_per_frame = 1000.0 * (f64)counter_elapsed / (f64)perf_count_frequency;
+        f64 fps = (f64)perf_count_frequency / (f64)counter_elapsed;
+        f64 mcpf = (f64)cycles_elapsed / 1000000.0;
+
+        fprintf(stdout, "%6.02fms/f, %6.02ff/s %6.02fmc/f -- tone: %7.02f, wave: %9.02f\r", ms_per_frame, fps, mcpf, global_sound_output.toneHz, global_sound_output.wave_period);
+
+        last_cycle_count = end_cycle_count;
+        last_counter = end_counter;
     }
 
     exitval = EXIT_SUCCESS;
