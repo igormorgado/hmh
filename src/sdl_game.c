@@ -303,8 +303,8 @@ ResizeBackBuffer(struct game_offscreen_buffer *buffer, SDL_Window *window, u16 w
     int bytes_per_pixel = SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888);
     if(buffer->memory)
     {
-        free(buffer->memory);
-        //munmap(buffer->memory, buffer->width * buffer->height * bytes_per_pixel);
+        // free(buffer->memory);
+        munmap(buffer->memory, buffer->width * buffer->height * bytes_per_pixel);
     }
 
     if(buffer->texture)
@@ -329,13 +329,13 @@ ResizeBackBuffer(struct game_offscreen_buffer *buffer, SDL_Window *window, u16 w
     buffer->width = width;
     buffer->height = height;
     buffer->pitch = width * bytes_per_pixel;
-    buffer->memory = malloc(buffer->width * buffer->height * bytes_per_pixel);
-    // BitmapMemory = mmap(NULL,
-    //                     buffer->width * buffer->height * bytes_per_pixel,
-    //                     PROT_READ | PROT_WRITE,
-    //                     MAP_PRIVATE | MAP_ANONYMOUS,
-    //                     -1,
-    //                     0);
+    // buffer->memory = malloc(buffer->width * buffer->height * bytes_per_pixel);
+    buffer->memory = mmap(NULL,
+                        buffer->width * buffer->height * bytes_per_pixel,
+                        PROT_READ | PROT_WRITE,
+                        MAP_PRIVATE | MAP_ANONYMOUS,
+                        -1,
+                        0);
     if(!buffer->memory)
     {
         SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
@@ -801,7 +801,8 @@ ExitGame(SDL_Window *window)
     GameControllersQuit();
     SDL_Renderer *renderer = SDL_GetRenderer(window);
     // TODO: If mmap need to munmap
-    if (GlobalBackBuffer.memory)    free(GlobalBackBuffer.memory);
+    //if (GlobalBackBuffer.memory)    free(GlobalBackBuffer.memory);
+    munmap(GlobalBackBuffer.memory, GlobalBackBuffer.width * GlobalBackBuffer.height * SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888));
     if (GlobalBackBuffer.texture)   SDL_DestroyTexture(GlobalBackBuffer.texture);
     if (renderer)                   SDL_DestroyRenderer(renderer);
     if (window)                     SDL_DestroyWindow(window);
@@ -837,7 +838,7 @@ main(void)
     global_sound_output.wave_period = (f32)global_sound_output.samples_per_second / global_sound_output.toneHz;
     global_sound_output.bytes_per_sample = sizeof(i16) * 2;
     global_sound_output.secondary_buffer_size = global_sound_output.samples_per_second * global_sound_output.bytes_per_sample;
-    global_sound_output.latency_sample_count = global_sound_output.samples_per_second / 15;
+    global_sound_output.latency_sample_count = global_sound_output.samples_per_second / 30;
 
     /* Initialize sound paused*/
     InitAudioCallback(global_sound_output.samples_per_second, global_sound_output.secondary_buffer_size);
