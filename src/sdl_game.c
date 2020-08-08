@@ -1,30 +1,15 @@
-#include <stdint.h>
 #include <stdbool.h>
-#include <stdlib.h>
-#include <math.h>
-#include <SDL2/SDL.h>
-#include <assert.h>
-#include <sys/mman.h>
-#include <x86intrin.h>
+#include <stdint.h>
+#include <stddef.h>
 
-
-#define MININT(a, b)    ((a) < (b) ? (a) : (b))
-#define MAXINT(a, b)    ((a) > (b) ? (a) : (b))
-
-#ifndef MAP_ANONYMOUS
-# define MAP_ANONYMOUS MAP_ANON
-#endif
-
+#define internal static
+#define local_persist static
+#define global_variable static
 
 #define PI          3.14159265358979323846f  /* pi */
 #define PI_2        1.57079632679489661923f  /* pi/2 */
 #define PI_4        0.78539816339744830962f  /* pi/4 */
 #define TAU         6.28318530717958623199f  /* Tau = 2*pi */
-
-
-#define internal static
-#define local_persist static
-#define global_variable static
 
 typedef int8_t          i8;
 typedef int16_t         i16;
@@ -40,7 +25,6 @@ typedef unsigned int    uint;
 typedef float           f32;
 typedef double          f64;
 
-
 enum RETURN_STATUS
 {
     RETURN_FAILURE = -1,
@@ -49,7 +33,33 @@ enum RETURN_STATUS
 };
 
 
-struct game_offscreen_buffer
+#include <math.h>
+
+#define MININT(a, b)    ((a) < (b) ? (a) : (b))
+#define MAXINT(a, b)    ((a) > (b) ? (a) : (b))
+
+/* Plataform independant code */
+#include "game.h"
+#include "game.c"
+
+#include <SDL2/SDL.h>
+/* TODO: USE SDL2 stdc implementations */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <x86intrin.h>
+
+#ifndef MAP_ANONYMOUS
+# define MAP_ANONYMOUS MAP_ANON
+#endif
+
+
+/*
+ * Plataform dependant code
+ */
+
+struct sdl_offscreen_buffer
 {
     SDL_Texture *texture;
     void *memory;
@@ -58,56 +68,53 @@ struct game_offscreen_buffer
     int pitch;
 };
 
-struct window_dimension
+/* TODO: This isn't really SDL coupled */
+struct sdl_window_dimension
 {
     int width;
     int height;
 };
 
-global_variable u8 red = 0;
-
-#include "game.c"
-
-global_variable struct game_offscreen_buffer GlobalBackBuffer;
-global_variable f32 XOffset = 0.f;
-global_variable f32 YOffset = 0.f;
-// global_variable i32 FramesPerSecond = 60;
+/* Since we are using SDL Textures we still use SDL dependant code */
+global_variable struct sdl_offscreen_buffer GlobalBackBuffer;
 
 /* Input data */
 #define MAX_CONTROLLERS 4
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];
 SDL_Haptic *RumbleHandles[MAX_CONTROLLERS];
 
-struct audio_ring_buffer
+struct sdl_audio_ring_buffer
 {
     i32 size;
     i32 write_cursor;
     i32 play_cursor;
     void * data;
 };
+global_variable struct sdl_audio_ring_buffer AudioRingBuffer;
 
-struct sound_output
+/* This really not depends on SDL.. I think */
+/* PUT SDL_AudioDeviceID in here? */
+struct sdl_sound_output
 {
     i32 samples_per_second;
     f32 toneHz;
-    f32 amplitude;
+    f32 amplitude;  /* ToneVolume */
     size_t running_sample_index;
     f32 wave_period;
     i32 bytes_per_sample;
-    i32 latency_sample_count;
     i32 secondary_buffer_size; /* todo: size_t? */
     f32 t_sine;
+    i32 latency_sample_count;
 };
 
-global_variable struct audio_ring_buffer AudioRingBuffer;
-global_variable struct sound_output global_sound_output;
+/* Remove global... */
+global_variable struct sdl_sound_output global_sound_output;
 global_variable SDL_AudioDeviceID adev;
 
-
 internal void
-AudioCallback(void *userdata, u8 *audiodata, i32 length)
+sdl_AudioCallback(void *userdata, u8 *audiodata, i32 length)
 {
-    struct audio_ring_buffer *ringbuffer = (struct audio_ring_buffer *)userdata;
+    struct sdl_audio_ring_buffer *ringbuffer = (struct sdl_audio_ring_buffer *)userdata;
 
     i32 region1size = (i32)length;
     i32 region2size = (i32)0;
@@ -126,14 +133,14 @@ AudioCallback(void *userdata, u8 *audiodata, i32 length)
 
 
 internal SDL_AudioDeviceID
-InitAudioCallback(i32 SamplesPerSecond, i32 BufferSize)
+sdl_InitAudio(i32 SamplesPerSecond, i32 BufferSize)
 {
     SDL_AudioSpec AudioSettings = {0};
     AudioSettings.freq = SamplesPerSecond;
     AudioSettings.format = AUDIO_S16LSB;
     AudioSettings.channels = 2;
     AudioSettings.samples = 1024;
-    AudioSettings.callback = &AudioCallback;
+    AudioSettings.callback = &sdl_AudioCallback;
     AudioSettings.userdata = &AudioRingBuffer;
 
     AudioRingBuffer.size = BufferSize;
@@ -164,73 +171,64 @@ InitAudioCallback(i32 SamplesPerSecond, i32 BufferSize)
 }
 
 
+
 internal void
-sound_get_cursors(SDL_AudioDeviceID audiodevice,
-                  i32 *byte_to_lock,
-                  i32 *bytes_to_write)
+sdl_SoundGetCursors(SDL_AudioDeviceID audiodevice,
+                    struct sdl_sound_output *sound_output,
+                    i32 *byte_to_lock,
+                    i32 *bytes_to_write)
 {
     SDL_LockAudioDevice(audiodevice);
-    *byte_to_lock = ((global_sound_output.running_sample_index
-                     * global_sound_output.bytes_per_sample)
-                    % global_sound_output.secondary_buffer_size);
+    *byte_to_lock = ((sound_output->running_sample_index
+                     * sound_output->bytes_per_sample)
+                    % sound_output->secondary_buffer_size);
 
-    i32 target_cursor = ((( global_sound_output.latency_sample_count
-                          * global_sound_output.bytes_per_sample)
+    i32 target_cursor = ((( sound_output->latency_sample_count
+                          * sound_output->bytes_per_sample)
                          + AudioRingBuffer.play_cursor)
-                        % global_sound_output.secondary_buffer_size);
+                        % sound_output->secondary_buffer_size);
 
     if (*byte_to_lock > target_cursor)
-        *bytes_to_write = global_sound_output.secondary_buffer_size - *byte_to_lock + target_cursor;
+        *bytes_to_write = sound_output->secondary_buffer_size - *byte_to_lock + target_cursor;
     else
         *bytes_to_write = target_cursor - *byte_to_lock;
     SDL_UnlockAudioDevice(audiodevice);
 }
 
 internal void
-PlaySineWaveCallback(i32 byte_to_lock,
-                     i32 bytes_to_write)
+sdl_FillSoundBuffer(struct sdl_sound_output *sound_output,
+                    i32 byte_to_lock,
+                    i32 bytes_to_write,
+                    struct game_sound_output_buffer *sound_buffer)
 {
-
     /* Calculate region sizes */
     void *region1 = (u8*)AudioRingBuffer.data + byte_to_lock;
     i32 region1_size = bytes_to_write;
-    if(region1_size + byte_to_lock > global_sound_output.secondary_buffer_size)
-        region1_size = global_sound_output.secondary_buffer_size - byte_to_lock;
+    if(region1_size + byte_to_lock > sound_output->secondary_buffer_size)
+        region1_size = sound_output->secondary_buffer_size - byte_to_lock;
 
     void *region2 = AudioRingBuffer.data;
     i32 region2_size = bytes_to_write - region1_size;
 
-    /* Initialize sample variables */
+    i16 *samples = sound_buffer->samples;
     i16 *sample_out = NULL;
-    i16 sample_value = 0;
-    f32 sine_value = 0.0f;
 
     /* Fill region 1 */
-    i32 region1_sample_count = region1_size / global_sound_output.bytes_per_sample;
+    i32 region1_sample_count = region1_size / sound_output->bytes_per_sample;
     sample_out = (i16*)region1;
-    for (i32 sample_index = 0; sample_index < region1_sample_count; ++ sample_index)
+    for (i32 sample_index = 0; sample_index < region1_sample_count; ++sample_index)
     {
-        sine_value = sinf(global_sound_output.t_sine);
-        sample_value = (i16)(roundf(sine_value * global_sound_output.amplitude));
-        *sample_out++ = sample_value;     // L
-        *sample_out++ = sample_value;     // R
-
-        global_sound_output.t_sine += TAU / global_sound_output.wave_period;
-        ++global_sound_output.running_sample_index;
+        *sample_out++ = *samples++;     // L
+        *sample_out++ = *samples++;     // R
     }
 
     /* Fill region 2 */
-    i32 region2_sample_count = region2_size / global_sound_output.bytes_per_sample;
+    i32 region2_sample_count = region2_size / sound_output->bytes_per_sample;
     sample_out = (i16*)region2;
     for (i32 sample_index = 0; sample_index < region2_sample_count; ++ sample_index)
     {
-        sine_value = sinf(global_sound_output.t_sine);
-        sample_value = (i16)(roundf(sine_value * global_sound_output.amplitude));
-        *sample_out++ = sample_value;     // L
-        *sample_out++ = sample_value;     // R
-
-        global_sound_output.t_sine += TAU / global_sound_output.wave_period;
-        ++global_sound_output.running_sample_index;
+        *sample_out++ = *samples;     // L
+        *sample_out++ = *samples;     // R
     }
 }
 
@@ -284,62 +282,63 @@ PlaySquareWaveCallback(i32 byte_to_lock,
 }
 
 
-internal struct window_dimension
-WindowGetDimension(SDL_Window *window)
+internal struct sdl_window_dimension
+sdl_WindowGetDimension(SDL_Window *window)
 {
-    struct window_dimension result;
+    struct sdl_window_dimension result;
     SDL_GetWindowSize(window, &result.width, &result.height);
     return result;
 }
 
 
 
+/* NOTE: Name in hmh is SDLResizeTexture */
 internal int
-ResizeBackBuffer(struct game_offscreen_buffer *buffer, SDL_Window *window, u16 width, u16 height)
+sdl_ResizeBackBuffer(struct sdl_offscreen_buffer *screenbuffer, SDL_Window *window, u16 width, u16 height)
 {
     // TODO: ASSERT WINDOW not null
     // TODO: ASSERT 0 < width/height <= 4096
 
     int bytes_per_pixel = SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888);
-    if(buffer->memory)
+    if(screenbuffer->memory)
     {
-        // free(buffer->memory);
-        munmap(buffer->memory, buffer->width * buffer->height * bytes_per_pixel);
+        // free(screenbuffer->memory);
+        munmap(screenbuffer->memory, screenbuffer->width * screenbuffer->height * bytes_per_pixel);
     }
 
-    if(buffer->texture)
+    if(screenbuffer->texture)
     {
-        SDL_DestroyTexture(buffer->texture);
+        SDL_DestroyTexture(screenbuffer->texture);
     }
 
     SDL_Renderer *renderer = SDL_GetRenderer(window);
-    buffer->texture = SDL_CreateTexture(renderer,
+    screenbuffer->texture = SDL_CreateTexture(renderer,
                                         SDL_PIXELFORMAT_ARGB8888,
                                         SDL_TEXTUREACCESS_STREAMING,
                                         width,
                                         height);
 
-    if(!buffer->texture)
+    if(!screenbuffer->texture)
     {
         SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
                       "%s: SDL_CreateTexture(GlobalBackBuffer): %s\n",
                       __func__, SDL_GetError());
         return RETURN_FAILURE;
     }
-    buffer->width = width;
-    buffer->height = height;
-    buffer->pitch = width * bytes_per_pixel;
-    // buffer->memory = malloc(buffer->width * buffer->height * bytes_per_pixel);
-    buffer->memory = mmap(NULL,
-                        buffer->width * buffer->height * bytes_per_pixel,
+    screenbuffer->width = width;
+    screenbuffer->height = height;
+    screenbuffer->pitch = width * bytes_per_pixel;
+    // screenbuffer->memory = malloc(screenbuffer->width * screenbuffer->height * bytes_per_pixel);
+    screenbuffer->memory = mmap(NULL,
+                        screenbuffer->width * screenbuffer->height * bytes_per_pixel,
                         PROT_READ | PROT_WRITE,
                         MAP_PRIVATE | MAP_ANONYMOUS,
                         -1,
                         0);
-    if(!buffer->memory)
+    if(!screenbuffer->memory)
     {
         SDL_LogError (SDL_LOG_CATEGORY_APPLICATION,
-                      "%s: malloc(buffer->memory): %s\n",
+                      "%s: malloc(screenbuffer->memory): %s\n",
                       __func__, SDL_GetError());
         return RETURN_FAILURE;
     }
@@ -348,25 +347,23 @@ ResizeBackBuffer(struct game_offscreen_buffer *buffer, SDL_Window *window, u16 w
 
 
 internal int
-UpdateWindow(SDL_Window *window, struct game_offscreen_buffer *buffer)
+sdl_UpdateWindow(SDL_Window *window, struct sdl_offscreen_buffer *screenbuffer)
 {
     // TODO: ASSERT WINDOW not null
     // TODO: Handle all those "ifs"  with SDL_Asserts.
     i32 retval = RETURN_FAILURE;
-#if 0
-    if(!buffer->texture)
+    if(!screenbuffer->texture)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                 "%s: GlobalBackBuffer Texture NULL, nothing to update\n",
                 __func__);
         return retval;
     }
-#endif
 
-    retval = SDL_UpdateTexture(buffer->texture,
+    retval = SDL_UpdateTexture(screenbuffer->texture,
                                NULL,
-                               buffer->memory,
-                               buffer->pitch);
+                               screenbuffer->memory,
+                               screenbuffer->pitch);
 
     if(retval < 0)
     {
@@ -377,7 +374,6 @@ UpdateWindow(SDL_Window *window, struct game_offscreen_buffer *buffer)
     }
 
     SDL_Renderer *renderer = SDL_GetRenderer(window);
-#if 0
     if(!renderer)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
@@ -385,10 +381,8 @@ UpdateWindow(SDL_Window *window, struct game_offscreen_buffer *buffer)
                 __func__, SDL_GetError());
         return RETURN_FAILURE;
     }
-#endif
 
-    retval = SDL_RenderCopy(renderer, buffer->texture, NULL, NULL);
-#if 0
+    retval = SDL_RenderCopy(renderer, screenbuffer->texture, NULL, NULL);
     if(retval < 0)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
@@ -396,7 +390,6 @@ UpdateWindow(SDL_Window *window, struct game_offscreen_buffer *buffer)
                 __func__, SDL_GetError());
         return retval;
     }
-#endif
 
     SDL_RenderPresent(renderer);
     return RETURN_SUCCESS;
@@ -404,14 +397,14 @@ UpdateWindow(SDL_Window *window, struct game_offscreen_buffer *buffer)
 
 
 internal i32
-HandleQuit()
+sdl_HandleQuit()
 {
     return RETURN_EXIT;
 }
 
 
 internal i32
-HandleWindow(const SDL_Event event)
+sdl_HandleWindow(const SDL_Event event)
 {
     // TODO: Assert eevent not null
     switch(event.window.event)
@@ -427,7 +420,7 @@ HandleWindow(const SDL_Event event)
             SDL_Log("%s: Window size changed (%d, %d)\n",
                     __func__, event.window.data1, event.window.data2);
             //SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
-            //ResizeBackBuffer(window, event.window.data1, event.window.data2);
+            //sdl_ResizeBackBuffer(window, event.window.data1, event.window.data2);
         } break;
 
         case SDL_WINDOWEVENT_FOCUS_GAINED:
@@ -454,7 +447,7 @@ HandleWindow(const SDL_Event event)
         {
             SDL_Log("%s: Window exposed\n", __func__);
             SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
-            UpdateWindow(window, &GlobalBackBuffer);
+            sdl_UpdateWindow(window, &GlobalBackBuffer);
         } break;
 
         case SDL_WINDOWEVENT_CLOSE:
@@ -479,7 +472,7 @@ HandleWindow(const SDL_Event event)
 
 
 internal i32
-HandleKey(const SDL_Event event)
+sdl_HandleKey(const SDL_Event event)
 {
     SDL_Keycode KeyCode = event.key.keysym.sym;
     SDL_Keymod  KeyMod  = event.key.keysym.mod;
@@ -565,16 +558,16 @@ HandleKey(const SDL_Event event)
 
 
 internal i32
-HandleEvent(const SDL_Event event)
+sdl_HandleEvent(const SDL_Event event)
 {
     // TODO: Assert eevent not null
     i32 retval = RETURN_SUCCESS;
     switch(event.type)
     {
-        case SDL_QUIT:          retval = HandleQuit(); break;
-        case SDL_WINDOWEVENT:   retval = HandleWindow(event); break;
-        case SDL_KEYUP:         retval = HandleKey(event); break;
-        case SDL_KEYDOWN:       retval = HandleKey(event); break;
+        case SDL_QUIT:          retval = sdl_HandleQuit(); break;
+        case SDL_WINDOWEVENT:   retval = sdl_HandleWindow(event); break;
+        case SDL_KEYUP:         retval = sdl_HandleKey(event); break;
+        case SDL_KEYDOWN:       retval = sdl_HandleKey(event); break;
         default: break;
     }
     return retval;
@@ -582,7 +575,7 @@ HandleEvent(const SDL_Event event)
 
 
 internal i32
-GameControllersInit()
+sdl_GameControllersInit()
 {
     int njoys = SDL_NumJoysticks();
     int ControllerIndex = 0;
@@ -609,7 +602,7 @@ GameControllersInit()
 
 
 internal void
-GameControllersQuit()
+sdl_GameControllersQuit()
 {
     for (int i = 0; i < MAX_CONTROLLERS; i++)
     {
@@ -629,7 +622,8 @@ GameControllersQuit()
 }
 
 
-void HandleController(void)
+void
+sdl_HandleController(void)
 {
     f32 speed = 2.0f;
     for(int i = 0; i< MAX_CONTROLLERS; i++)
@@ -741,7 +735,7 @@ void HandleController(void)
 
 
 internal SDL_Window *
-InitGame(u16 screen_width, u16 screen_height)
+sdl_InitGame(u16 screen_width, u16 screen_height)
 {
     // TODO: Assert Window not null
     // TODO: Assert widht/height < 4096
@@ -787,18 +781,18 @@ InitGame(u16 screen_width, u16 screen_height)
 
     SDL_RenderSetLogicalSize(renderer, screen_width, screen_height);
 
-    GameControllersInit();
+    sdl_GameControllersInit();
 
     return window;
 }
 
 
 internal void
-ExitGame(SDL_Window *window)
+sdl_ExitGame (SDL_Window *window)
 {
     // TODO: Assert Window not null
     SDL_Log ("Exiting\n");
-    GameControllersQuit();
+    sdl_GameControllersQuit();
     SDL_Renderer *renderer = SDL_GetRenderer(window);
     // TODO: If mmap need to munmap
     //if (GlobalBackBuffer.memory)    free(GlobalBackBuffer.memory);
@@ -815,20 +809,18 @@ ExitGame(SDL_Window *window)
 
 
 int
-main(void)
+main (void)
 {
     i32 exitval = EXIT_FAILURE;
     i32 retval = RETURN_SUCCESS;
 
-    SDL_Window *window = InitGame(800, 600);
-    if(!window) {
-        goto __EXIT__;
-    }
+    SDL_Window *window = sdl_InitGame(800, 600);
+    if(!window) goto __EXIT__;
 
     u64 perf_count_frequency = SDL_GetPerformanceFrequency();
 
-    struct window_dimension wdim = WindowGetDimension(window);
-    ResizeBackBuffer(&GlobalBackBuffer, window, wdim.width, wdim.height);
+    struct sdl_window_dimension wdim = sdl_WindowGetDimension(window);
+    sdl_ResizeBackBuffer(&GlobalBackBuffer, window, wdim.width, wdim.height);
 
     // Queue Buffer size
     global_sound_output.samples_per_second = 48000;
@@ -838,11 +830,12 @@ main(void)
     global_sound_output.wave_period = (f32)global_sound_output.samples_per_second / global_sound_output.toneHz;
     global_sound_output.bytes_per_sample = sizeof(i16) * 2;
     global_sound_output.secondary_buffer_size = global_sound_output.samples_per_second * global_sound_output.bytes_per_sample;
-    global_sound_output.latency_sample_count = global_sound_output.samples_per_second / 30;
+    global_sound_output.latency_sample_count = global_sound_output.samples_per_second / 15;
+    global_sound_output.t_sine = 0.0f;
 
     /* Initialize sound paused*/
-    InitAudioCallback(global_sound_output.samples_per_second, global_sound_output.secondary_buffer_size);
-    PlaySineWaveCallback(0, global_sound_output.latency_sample_count * global_sound_output.bytes_per_sample);
+    sdl_InitAudio(global_sound_output.samples_per_second, global_sound_output.secondary_buffer_size);
+    i16 *samples = calloc(global_sound_output.samples_per_second, global_sound_output.bytes_per_sample);
     SDL_PauseAudioDevice(adev, 0);
 
     u64 last_counter = SDL_GetPerformanceCounter();
@@ -856,36 +849,42 @@ main(void)
         while(SDL_PollEvent(&event))
         {
             /* TODO: PUT ON IF CLAUSE ? */
-            retval = HandleEvent(event);
+            retval = sdl_HandleEvent(event);
             if(retval == RETURN_EXIT)
                 running = false;
         }
-        HandleController();
+        sdl_HandleController();
 
-        /* Play sound */
+
+        /* Prepare render buffers */
         i32 byte_to_lock  = 0;
         i32 bytes_to_write = 0;
-        sound_get_cursors(adev, &byte_to_lock, &bytes_to_write);
-        PlaySineWaveCallback(byte_to_lock, bytes_to_write);
+        sdl_SoundGetCursors(adev, &global_sound_output, &byte_to_lock, &bytes_to_write);
 
-        /* Draw screen */
-        struct game_offscreen_buffer buffer = {};
-        buffer.memory = GlobalBackBuffer.memory;
-        buffer.width = GlobalBackBuffer.width;
-        buffer.height = GlobalBackBuffer.height;
-        buffer.pitch = GlobalBackBuffer.pitch;
-        GameUpdateAndRender(&buffer, XOffset, YOffset);
-        UpdateWindow(window, &GlobalBackBuffer);
+        struct game_sound_output_buffer sound_buffer = {0};
+        sound_buffer.samples_per_second = global_sound_output.samples_per_second;
+        sound_buffer.sample_count = bytes_to_write / global_sound_output.bytes_per_sample;
+        sound_buffer.samples = samples;
 
-        ++XOffset;
-        YOffset+=.75;
+        struct game_offscreen_buffer screen_buffer = {0};
+        screen_buffer.memory = GlobalBackBuffer.memory;
+        screen_buffer.width = GlobalBackBuffer.width;
+        screen_buffer.height = GlobalBackBuffer.height;
+        screen_buffer.pitch = GlobalBackBuffer.pitch;
 
-        //u64 perf_count_frequency = SDL_GetPerformanceFrequency();
+        /* Here we fill Screen and Sound buffers */
+        GameUpdateAndRender(&screen_buffer, XOffset, YOffset,
+                            &sound_buffer, global_sound_output.toneHz);
+
+        /* "Blit" Video and Audio*/
+        sdl_FillSoundBuffer(&global_sound_output, byte_to_lock, bytes_to_write, &sound_buffer);
+        sdl_UpdateWindow(window, &GlobalBackBuffer);
+
+        /* Do the rendering math */
         u64 end_cycle_count = _rdtsc();
         u64 end_counter = SDL_GetPerformanceCounter();
         u64 counter_elapsed = end_counter - last_counter;
         u64 cycles_elapsed = end_cycle_count - last_cycle_count;
-
         f64 ms_per_frame = 1000.0 * (f64)counter_elapsed / (f64)perf_count_frequency;
         f64 fps = (f64)perf_count_frequency / (f64)counter_elapsed;
         f64 mcpf = (f64)cycles_elapsed / 1000000.0;
@@ -900,7 +899,7 @@ main(void)
 __EXIT__:
     if (adev > 0)
         SDL_CloseAudioDevice(adev);
-    ExitGame(window);
+    sdl_ExitGame(window);
     return exitval;
 }
 
