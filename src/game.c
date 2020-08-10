@@ -1,6 +1,4 @@
-global_variable u8 red = 0;
-global_variable f32 XOffset = 0.f;
-global_variable f32 YOffset = 0.f;
+#include <sys/cdefs.h>
 
 internal i32
 GameOutputSound(struct game_sound_output_buffer *sound_buffer, f32 tonehz)
@@ -22,7 +20,8 @@ GameOutputSound(struct game_sound_output_buffer *sound_buffer, f32 tonehz)
 }
 
 internal i32
-RenderWeirdGradient (struct game_offscreen_buffer *screenbuffer, i16 blueoffset, i16 greenoffset)
+RenderWeirdGradient (struct game_offscreen_buffer *screenbuffer,
+                     i16 blueoffset, i16 greenoffset, i16 redoffset)
 {
 
     // TODO: ASSERT WINDOW NOT NULL
@@ -35,6 +34,7 @@ RenderWeirdGradient (struct game_offscreen_buffer *screenbuffer, i16 blueoffset,
         {
             u8 blue = (x + blueoffset);
             u8 green = (y + greenoffset);
+            u8 red = redoffset;
             *pixel++ = ((red << 16)  |
                         (green << 8) |
                         (blue << 0));
@@ -45,9 +45,32 @@ RenderWeirdGradient (struct game_offscreen_buffer *screenbuffer, i16 blueoffset,
 }
 
 internal void
-GameUpdateAndRender(struct game_offscreen_buffer *screen_buffer, i16 blueoffset, i16 greenoffset,
-                    struct game_sound_output_buffer *sound_buffer, f32 tonehz)
+GameUpdateAndRender(struct game_input *input,
+                    struct game_offscreen_buffer *screen_buffer,
+                    struct game_sound_output_buffer *sound_buffer)
 {
+    local_persist i16 redoffset = 0;
+    local_persist i16 blueoffset = 0;
+    local_persist i16 greenoffset = 0;
+    local_persist f32 tonehz = 256.0f;
+
+
+    struct game_controller_input *input0 = &(input->controllers[0]);
+    if(input0->is_analog)
+    {
+        blueoffset += (i16)(4.0f * input0->end_x);
+        tonehz = 256.0f + 128.0f * input0->end_y;
+    }
+    else
+    {
+        /* TODO: Do digital... */
+    }
+
+    if(input0->down.ended_down)
+    {
+        greenoffset += 1;
+    }
+
     GameOutputSound(sound_buffer, tonehz);
-    RenderWeirdGradient(screen_buffer, blueoffset, greenoffset);
+    RenderWeirdGradient(screen_buffer, blueoffset, greenoffset, redoffset);
 }
