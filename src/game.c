@@ -44,22 +44,42 @@ RenderWeirdGradient (struct game_offscreen_buffer *screenbuffer,
     return RETURN_SUCCESS;
 }
 
+internal struct game_state *
+CreateGameState(void)
+{
+    struct game_state *state = malloc(sizeof *state);
+    if (state)
+    {
+        state->blue_offset = 0;
+        state->green_offset = 0;
+        state->red_offset = 0;
+        state->tone_hz = 256.0f;
+    }
+    return state;
+}
+
+
 internal void
-GameUpdateAndRender(struct game_input *input,
+GameUpdateAndRender(struct game_memory *memory,
+                    struct game_input *input,
                     struct game_offscreen_buffer *screen_buffer,
                     struct game_sound_output_buffer *sound_buffer)
 {
-    local_persist i16 redoffset = 0;
-    local_persist i16 blueoffset = 0;
-    local_persist i16 greenoffset = 0;
-    local_persist f32 tonehz = 256.0f;
+    /* TODO: Assert(sizeof(struct game_state) <= Memory->PermanentStorageSize) */
 
+    struct game_state *game_state = (struct game_state *)memory->persistent_storage;
+
+    if(!memory->is_initialized)
+    {
+        game_state->tone_hz = 256.0f;
+        memory->is_initialized = true;
+    }
 
     struct game_controller_input *input0 = &(input->controllers[0]);
     if(input0->is_analog)
     {
-        blueoffset += (i16)(4.0f * input0->end_x);
-        tonehz = 256.0f + 128.0f * input0->end_y;
+        game_state->blue_offset += (i16)(4.0f * input0->end_x);
+        game_state->tone_hz = 256.0f + 128.0f * input0->end_y;
     }
     else
     {
@@ -68,9 +88,9 @@ GameUpdateAndRender(struct game_input *input,
 
     if(input0->down.ended_down)
     {
-        greenoffset += 1;
+        game_state->green_offset += 1;
     }
 
-    GameOutputSound(sound_buffer, tonehz);
-    RenderWeirdGradient(screen_buffer, blueoffset, greenoffset, redoffset);
+    GameOutputSound(sound_buffer, game_state->tone_hz);
+    RenderWeirdGradient(screen_buffer, game_state->blue_offset, game_state->green_offset, game_state->red_offset);
 }

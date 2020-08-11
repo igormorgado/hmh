@@ -22,7 +22,13 @@
 # define MAP_ANONYMOUS MAP_ANON
 #endif
 
+#define Kilobytes(value) ((value)*1024LL)
+#define Megabytes(value) (Kilobytes(value)*1024LL)
+#define Gigabytes(value) (Megabytes(value)*1024LL)
+#define Terabytes(value) (Gigabytes(value)*1024LL)
+
 #define ArrayCount(array) (sizeof((array)) / sizeof((array)[0]))
+
 
 typedef int8_t          i8;
 typedef int16_t         i16;
@@ -109,7 +115,28 @@ struct game_input
     struct game_controller_input controllers[MAX_CONTROLLERS];
 };
 
-internal void GameUpdateAndRender(struct game_input *input,
+
+struct game_state
+{
+    i16 blue_offset;
+    i16 green_offset;
+    i16 red_offset;
+    f32 tone_hz;
+};
+
+struct game_memory
+{
+    bool is_initialized;
+
+    size_t persistent_storage_size;
+    void *persistent_storage;
+
+    size_t transient_storage_size;
+    void *transient_storage;
+};
+
+internal void GameUpdateAndRender(struct game_memory *memory,
+                                  struct game_input *input,
                                   struct game_offscreen_buffer *screen_buffer,
                                   struct game_sound_output_buffer *soundbuffer);
 

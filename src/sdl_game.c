@@ -718,6 +718,25 @@ main (void)
     i16 *samples = calloc(sound_output.samples_per_second, sound_output.bytes_per_sample);
     SDL_PauseAudioDevice(sound_output.device, 0);
 
+#if GAME_INTERNAL
+    void *base_address = (void*)Terabytes(2);
+#else
+    void *base_address = (void*)(0);
+#endif
+
+    struct game_memory game_memory = {};
+    game_memory.persistent_storage_size = Megabytes(64);
+    game_memory.transient_storage_size = Gigabytes(4);
+
+    size_t total_storage_size = game_memory.persistent_storage_size + game_memory.transient_storage_size;
+
+    game_memory.persistent_storage = mmap(base_address, total_storage_size,
+                                          PROT_READ | PROT_WRITE,
+                                          MAP_ANON | MAP_PRIVATE,
+                                          -1, 0);
+
+    /* TODO: SDL_Assert with break for debug chekcing game memory allocation*/
+
     u64 last_counter = SDL_GetPerformanceCounter();
     u64 last_cycle_count = _rdtsc();
 
@@ -752,7 +771,7 @@ main (void)
         screen_buffer.pitch = GlobalBackBuffer.pitch;
 
         /* Here we fill Screen and Sound buffers */
-        GameUpdateAndRender(new_input, &screen_buffer, &sound_buffer);
+        GameUpdateAndRender(&game_memory, new_input, &screen_buffer, &sound_buffer);
 
         struct game_input *temp_input = new_input;
         new_input = old_input;
