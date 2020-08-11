@@ -1,6 +1,10 @@
 #ifndef __SDL_GAME_H__
 #define __SDL_GAME_H__
 
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 /* TODO: USE SDL2 stdc implementations */
 #include <SDL2/SDL.h>
@@ -14,40 +18,36 @@
 
 struct sdl_offscreen_buffer
 {
-    SDL_Texture *texture;
-    void *memory;
-    i32 width;
-    i32 height;
-    i32 pitch;
+    SDL_Texture *Texture;
+    void *Memory;
+    int Width;
+    int Height;
+    int Pitch;
 };
 
 /* TODO: This isn't really SDL coupled */
 struct sdl_window_dimension
 {
-    i32 width;
-    i32 height;
+    int Width;
+    int Height;
 };
 
 struct sdl_audio_ring_buffer
 {
-    i32 size;
-    i32 write_cursor;
-    i32 play_cursor;
-    void * data;
+    int Size;
+    int WriteCursor;
+    int PlayCursor;
+    void *Data;
 };
 
 struct sdl_sound_output
 {
-    SDL_AudioDeviceID device;
-    i32 samples_per_second;
-    f32 toneHz;
-    f32 amplitude;  /* ToneVolume */
-    size_t running_sample_index;
-    f32 wave_period;
-    i32 bytes_per_sample;
-    i32 secondary_buffer_size; /* todo: size_t? */
-    f32 t_sine;
-    i32 latency_sample_count;
+    SDL_AudioDeviceID AudioDevice;
+    int SamplesPerSecond;
+    u32 RunningSampleIndex;
+    int BytesPerSample;
+    int SecondaryBufferSize; /* todo: size_t? */
+    int LatencySampleCount;
 };
 
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];

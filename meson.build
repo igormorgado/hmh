@@ -7,6 +7,7 @@ project('sdl_game', 'c',
 )
 
 add_global_arguments(['-Wno-unused-function'], language: 'c')
+add_global_arguments(['-DDEBUG'], language: 'c')
 
 incdir = include_directories('include')
 

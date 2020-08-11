@@ -59,52 +59,52 @@ enum RETURN_STATUS
 
 struct game_offscreen_buffer
 {
-    void *memory;
-    int width;
-    int height;
-    int pitch;
+    void *Memory;
+    int Width;
+    int Height;
+    int Pitch;
 };
 
 struct game_sound_output_buffer
 {
-    int samples_per_second;
-    size_t sample_count;
-    i16 *samples;
+    int SamplesPerSecond;
+    size_t SampleCount;
+    i16 *Samples;
 };
 
 struct game_button_state
 {
-    int half_transient_count;
-    bool ended_down;
+    int HalfTransientCount;
+    bool EndedDown;
 };
 
 struct game_controller_input
 {
-    bool is_analog;
+    bool IsAnalog;
 
-    f32 start_x;
-    f32 start_y;
+    f32 StartX;
+    f32 StartY;
 
-    f32 min_x;
-    f32 min_y;
+    f32 MinX;
+    f32 MinY;
 
-    f32 max_x;
-    f32 max_y;
+    f32 MaxX;
+    f32 MaxY;
 
-    f32 end_x;
-    f32 end_y;
+    f32 EndX;
+    f32 EndY;
 
     union
     {
-        struct game_button_state buttons[6];
+        struct game_button_state Buttons[6];
         struct
         {
-            struct game_button_state up;
-            struct game_button_state down;
-            struct game_button_state left;
-            struct game_button_state right;
-            struct game_button_state lshoulder;
-            struct game_button_state rshoulder;
+            struct game_button_state Up;
+            struct game_button_state Down;
+            struct game_button_state Left;
+            struct game_button_state Right;
+            struct game_button_state Lshoulder;
+            struct game_button_state Rshoulder;
         };
     };
 };
@@ -112,32 +112,46 @@ struct game_controller_input
 #define MAX_CONTROLLERS 4
 struct game_input
 {
-    struct game_controller_input controllers[MAX_CONTROLLERS];
+    struct game_controller_input Controllers[MAX_CONTROLLERS];
 };
 
 
 struct game_state
 {
-    i16 blue_offset;
-    i16 green_offset;
-    i16 red_offset;
-    f32 tone_hz;
+    i16 BlueOffset;
+    i16 GreenOffset;
+    i16 RedOffset;
+    f32 ToneHz;
 };
 
 struct game_memory
 {
-    bool is_initialized;
+    bool IsInitialized;
 
-    size_t persistent_storage_size;
-    void *persistent_storage;
+    size_t PersistentStorageSize;
+    void *PersistentStorage;
 
-    size_t transient_storage_size;
-    void *transient_storage;
+    size_t TransientStorageSize;
+    void *TransientStorage;
 };
 
-internal void GameUpdateAndRender(struct game_memory *memory,
-                                  struct game_input *input,
-                                  struct game_offscreen_buffer *screen_buffer,
-                                  struct game_sound_output_buffer *soundbuffer);
+
+#if DEBUG
+struct debug_read_file_result
+{
+    u32 ContentsSize;
+    void *Contents;
+};
+
+internal struct debug_read_file_result DEBUGPlataformReadEntireFile(char *filename);
+internal void DEBUGPlataformFreeFileMemory(void *Memory);
+internal bool DEBUGPlataformWriteEntireFile(char *Filename, u32 MemorySize, void *Memory);
+#endif
+
+
+internal void GameUpdateAndRender(struct game_memory *Memory,
+                                  struct game_input *Input,
+                                  struct game_offscreen_buffer *ScreenBuffer,
+                                  struct game_sound_output_buffer *SoundBuffer);
 
 #endif /* __GAME_H__ */
