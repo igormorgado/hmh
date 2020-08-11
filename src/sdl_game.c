@@ -12,9 +12,9 @@ global_variable struct sdl_audio_ring_buffer AudioRingBuffer;
 
 #if DEBUG
 internal struct debug_read_file_result
-DEBUGPlataformReadEntireFile(char *Filename)
+DEBUGPlataformReadEntireFile(const char *Filename)
 {
-    struct debug_read_file_result Result = {};
+    struct debug_read_file_result Result = {0};
 
     int FileHandle = open(Filename, O_RDONLY);
     if(FileHandle == -1)
@@ -66,7 +66,7 @@ DEBUGPlataformFreeFileMemory(void *Memory)
 }
 
 internal bool
-DEBUGPlataformWriteEntireFile(char *Filename, u32 MemorySize, void *Memory)
+DEBUGPlataformWriteEntireFile(const char *Filename, u32 MemorySize, void *Memory)
 {
     int FileHandle = open(Filename, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 
@@ -712,13 +712,13 @@ main (void)
     struct sdl_window_dimension wdim = sdl_WindowGetDimension(window);
     sdl_ResizeBackBuffer(&GlobalBackBuffer, window, wdim.Width, wdim.Height);
 
-    struct game_input input[2] = {};
+    struct game_input input[2] = {0};
 //    struct game_input *new_input = input;
 //    struct game_input *old_input = input + 1;
     struct game_input *new_input = &input[0];
     struct game_input *old_input = &input[1];
 
-    struct sdl_sound_output sound_output = {};
+    struct sdl_sound_output sound_output = {0};
     /* TODO: Fetch sound device from a list */
     sound_output.AudioDevice = 0;
     sound_output.SamplesPerSecond = 48000;
@@ -738,7 +738,7 @@ main (void)
     void *base_address = (void*)(0);
 #endif
 
-    struct game_memory game_memory = {};
+    struct game_memory game_memory = {0};
     game_memory.PersistentStorageSize = Megabytes(64);
     game_memory.TransientStorageSize = Gigabytes(2);
 
@@ -746,7 +746,7 @@ main (void)
 
     game_memory.PersistentStorage = mmap(base_address, total_storage_size,
                                           PROT_READ | PROT_WRITE,
-                                          MAP_ANON | MAP_PRIVATE,
+                                          MAP_ANONYMOUS | MAP_PRIVATE,
                                           -1, 0);
 
     /* TODO: SDL_Assert with break for debug chekcing game memory allocation*/

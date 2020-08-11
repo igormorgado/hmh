@@ -80,7 +80,7 @@ GameUpdateAndRender(struct game_memory *Memory,
     {
 
 #if DEBUG
-        char *Filename = __FILE__;
+        const char *Filename = __FILE__;
         struct debug_read_file_result File = DEBUGPlataformReadEntireFile(Filename);
         if(File.Contents)
         {

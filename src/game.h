@@ -18,10 +18,6 @@
 #define MININT(a, b)    ((a) < (b) ? (a) : (b))
 #define MAXINT(a, b)    ((a) > (b) ? (a) : (b))
 
-#ifndef MAP_ANONYMOUS
-# define MAP_ANONYMOUS MAP_ANON
-#endif
-
 #define Kilobytes(value) ((value)*1024LL)
 #define Megabytes(value) (Kilobytes(value)*1024LL)
 #define Gigabytes(value) (Megabytes(value)*1024LL)
@@ -143,9 +139,9 @@ struct debug_read_file_result
     void *Contents;
 };
 
-internal struct debug_read_file_result DEBUGPlataformReadEntireFile(char *filename);
+internal struct debug_read_file_result DEBUGPlataformReadEntireFile(const char *filename);
 internal void DEBUGPlataformFreeFileMemory(void *Memory);
-internal bool DEBUGPlataformWriteEntireFile(char *Filename, u32 MemorySize, void *Memory);
+internal bool DEBUGPlataformWriteEntireFile(const char *Filename, u32 MemorySize, void *Memory);
 #endif
 
 
