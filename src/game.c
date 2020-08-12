@@ -1,4 +1,5 @@
 
+#include "sdl_game.h"
 internal inline u32
 SafeTruncateUInt64(u64 Value)
 {
@@ -72,9 +73,12 @@ GameUpdateAndRender(struct game_memory *Memory,
                     struct game_offscreen_buffer *ScreenBuffer,
                     struct game_sound_output_buffer *SoundBuffer)
 {
-    /* TODO: Assert(sizeof(struct game_state) <= Memory->PermanentStorageSize) */
+    /* TODO: Assert(sizeof(struct GameState) <= Memory->PermanentStorageSize)
+     * Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) ==
+     *      (ArrayCount(Input->Controllers[0].Buttons)));
+     */
 
-    struct game_state *game_state = (struct game_state *)Memory->PersistentStorage;
+    struct game_state *GameState = (struct game_state *)Memory->PersistentStorage;
 
     if(!Memory->IsInitialized)
     {
@@ -88,27 +92,41 @@ GameUpdateAndRender(struct game_memory *Memory,
             DEBUGPlataformFreeFileMemory(File.Contents);
         }
 #endif
-
-        game_state->ToneHz = 256.0f;
+        GameState->ToneHz = 256.0f;
         Memory->IsInitialized = true;
     }
 
-    struct game_controller_input *input0 = &(Input->Controllers[0]);
-    if(input0->IsAnalog)
+    for(size_t i = 0; i < ArrayCount(Input->Controllers); ++i)
     {
-        game_state->BlueOffset += (i16)(4.0f * input0->EndX);
-        game_state->ToneHz = 256.0f + 128.0f * input0->EndY;
-    }
-    else
-    {
-        /* TODO: Do digital... */
-    }
+        struct game_controller_input *Controller = GetController(Input, i);
+        if(Controller->IsAnalog)
+        {
+            /* TODO: Tune ananlog movement */
+            GameState->BlueOffset += (i16)(4.0f * Controller->StickAverageX);
+            GameState->ToneHz = 256.0f + 128.0f * Controller->StickAverageY;
+        }
+        else
+        {
+            if(Controller->MoveLeft.EndedDown)
+            {
+                GameState->BlueOffset = -1;
+            }
+            if(Controller->MoveRight.EndedDown)
+            {
+                GameState->BlueOffset = 1;
+            }
+        }
 
-    if(input0->Down.EndedDown)
-    {
-        game_state->GreenOffset += 1;
-    }
+        if(Controller->ActionDown.EndedDown)
+        {
+            GameState->GreenOffset -= 1;
+        }
 
-    GameOutputSound(SoundBuffer, game_state->ToneHz);
-    RenderWeirdGradient(ScreenBuffer, game_state->BlueOffset, game_state->GreenOffset, game_state->RedOffset);
+        if(Controller->ActionUp.EndedDown)
+        {
+            GameState->GreenOffset += 1;
+        }
+    }
+    GameOutputSound(SoundBuffer, GameState->ToneHz);
+    RenderWeirdGradient(ScreenBuffer, GameState->BlueOffset, GameState->GreenOffset, GameState->RedOffset);
 }

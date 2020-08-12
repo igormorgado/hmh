@@ -70,47 +70,58 @@ struct game_sound_output_buffer
 
 struct game_button_state
 {
-    int HalfTransientCount;
+    int HalfTransitionCount;
     bool EndedDown;
 };
 
 struct game_controller_input
 {
+    bool IsConnected;
     bool IsAnalog;
 
-    f32 StartX;
-    f32 StartY;
-
-    f32 MinX;
-    f32 MinY;
-
-    f32 MaxX;
-    f32 MaxY;
-
-    f32 EndX;
-    f32 EndY;
+    f32 StickAverageX;
+    f32 StickAverageY;
 
     union
     {
-        struct game_button_state Buttons[6];
+        struct game_button_state Buttons[12];
         struct
         {
-            struct game_button_state Up;
-            struct game_button_state Down;
-            struct game_button_state Left;
-            struct game_button_state Right;
+            struct game_button_state MoveUp;
+            struct game_button_state MoveDown;
+            struct game_button_state MoveLeft;
+            struct game_button_state MoveRight;
+
+            struct game_button_state ActionUp;
+            struct game_button_state ActionDown;
+            struct game_button_state ActionLeft;
+            struct game_button_state ActionRight;
+
             struct game_button_state Lshoulder;
             struct game_button_state Rshoulder;
+
+            struct game_button_state Back;
+            struct game_button_state Start;
+
+            struct game_button_state Terminator;
         };
     };
 };
 
 #define MAX_CONTROLLERS 4
+#define MAX_INPUT MAX_CONTROLLERS + 1
 struct game_input
 {
-    struct game_controller_input Controllers[MAX_CONTROLLERS];
+    struct game_controller_input Controllers[MAX_INPUT];
 };
 
+static inline struct game_controller_input *
+GetController(struct game_input *Input, uint ControllerIndex)
+{
+    /* TODO: Assert(ControllerInde < ArrayCount(Input->Controllers)) */
+    struct game_controller_input *Result = &Input->Controllers[ControllerIndex];
+    return Result;
+}
 
 struct game_state
 {
