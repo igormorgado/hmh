@@ -23,6 +23,7 @@ struct sdl_offscreen_buffer
     int Width;
     int Height;
     int Pitch;
+    u32 BytesPerPixel;
 };
 
 /* TODO: This isn't really SDL coupled */
@@ -48,6 +49,12 @@ struct sdl_sound_output
     int BytesPerSample;
     int SecondaryBufferSize; /* todo: size_t? */
     int LatencySampleCount;
+};
+
+struct sdl_debug_time_marker
+{
+    int PlayCursor;
+    int WriteCursor;
 };
 
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];

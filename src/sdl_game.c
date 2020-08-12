@@ -7,7 +7,7 @@
 
 /* Since we are using SDL Textures we still use SDL dependant code */
 global_variable struct sdl_offscreen_buffer GlobalBackBuffer;
-global_variable struct sdl_audio_ring_buffer AudioRingBuffer;
+global_variable struct sdl_audio_ring_buffer GlobalAudioRingBuffer;
 
 
 #if DEBUG
@@ -92,30 +92,13 @@ DEBUGPlataformWriteEntireFile(const char *Filename, u32 MemorySize, void *Memory
 }
 #endif
 
-internal int
-sdl_GetWindowRefreshRate(SDL_Window *Window)
-{
-    SDL_DisplayMode Mode;
-    int DisplayIndex = SDL_GetWindowDisplayIndex(Window);
-    int DefaultRefreshRate = 60;
-    if (SDL_GetDesktopDisplayMode(DisplayIndex, &Mode) != 0)
-    {
-        return DefaultRefreshRate;
-    }
-    if (Mode.refresh_rate == 0)
-    {
-        return DefaultRefreshRate;
-    }
-    return Mode.refresh_rate;
-}
-
 internal void
 sdl_AudioCallback(void *userdata, u8 *audiodata, int length)
 {
     struct sdl_audio_ring_buffer *ringbuffer = (struct sdl_audio_ring_buffer *)userdata;
 
-    int region1size = (int)length;
-    int region2size = (int)0;
+    int region1size = length;
+    int region2size = 0;
     /* Not enough space on ring buffer region */
     if ( (ringbuffer->PlayCursor + length) > ringbuffer->Size)
     {
@@ -124,9 +107,11 @@ sdl_AudioCallback(void *userdata, u8 *audiodata, int length)
     }
 
     memcpy(audiodata, (u8*)(ringbuffer->Data) + ringbuffer->PlayCursor, region1size);
+    //memcpy(&audiodata[region1size], ringbuffer->Data, region2size);
     memcpy(audiodata + region1size, ringbuffer->Data, region2size);
     ringbuffer->PlayCursor = (ringbuffer->PlayCursor + length) % ringbuffer->Size;
-    ringbuffer->WriteCursor = (ringbuffer->PlayCursor + 2048) % ringbuffer->Size;
+    // ringbuffer->WriteCursor = (ringbuffer->PlayCursor + 2048) % ringbuffer->Size;
+    ringbuffer->WriteCursor = (ringbuffer->PlayCursor + length) % ringbuffer->Size;
 }
 
 internal void
@@ -136,24 +121,30 @@ sdl_InitAudio(struct sdl_sound_output *sound_output)
     AudioSettings.freq = sound_output->SamplesPerSecond;
     AudioSettings.format = AUDIO_S16LSB;
     AudioSettings.channels = 2;
-    AudioSettings.samples = 1024;
+    AudioSettings.samples = 512;
     AudioSettings.callback = &sdl_AudioCallback;
-    AudioSettings.userdata = &AudioRingBuffer;
+    AudioSettings.userdata = &GlobalAudioRingBuffer;
 
-    AudioRingBuffer.Size = sound_output->SecondaryBufferSize;
-    AudioRingBuffer.PlayCursor = 0;
-    AudioRingBuffer.WriteCursor = 0;
-    AudioRingBuffer.Data = malloc(sound_output->SecondaryBufferSize);
-    if(!AudioRingBuffer.Data)
+    GlobalAudioRingBuffer.Size = sound_output->SecondaryBufferSize;
+    GlobalAudioRingBuffer.PlayCursor = 0;
+    GlobalAudioRingBuffer.WriteCursor = 0;
+    //  GlobalAudioRingBuffer.Data = malloc(sound_output->SecondaryBufferSize);
+    GlobalAudioRingBuffer.Data = calloc(sound_output->SecondaryBufferSize, 1);
+    if(!GlobalAudioRingBuffer.Data)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "%s: malloc(AudioRingBuffer.data)\n", __func__);
+                "%s: malloc(GlobalAudioRingBuffer.data)\n", __func__);
         exit(EXIT_FAILURE);
     }
 
     sound_output->AudioDevice = SDL_OpenAudioDevice(NULL, 0, &AudioSettings, NULL, 0);
-    SDL_Log("%s: Audio opened: freq: %d, %d channels, %d bufsz\n",
-            __func__, AudioSettings.freq, AudioSettings.channels, AudioSettings.samples);
+    SDL_Log("%s: Audio opened ID (%d): freq: %d, channels: %d, samples: %d, bufsz: %d\n",
+            __func__,
+            sound_output->AudioDevice,
+            AudioSettings.freq,
+            AudioSettings.channels,
+            AudioSettings.samples,
+            AudioSettings.size);
 
     if (AudioSettings.format != AUDIO_S16LSB)
     {
@@ -177,7 +168,7 @@ sdl_SoundGetCursors(struct sdl_sound_output *sound_output,
 
     int target_cursor = ((( sound_output->LatencySampleCount
                           * sound_output->BytesPerSample)
-                         + AudioRingBuffer.PlayCursor)
+                         + GlobalAudioRingBuffer.PlayCursor)
                         % sound_output->SecondaryBufferSize);
 
     if (*byte_to_lock > target_cursor)
@@ -193,36 +184,109 @@ sdl_FillSoundBuffer(struct sdl_sound_output *sound_output,
                     int bytes_to_write,
                     struct game_sound_output_buffer *sound_buffer)
 {
+    i16 *samples = sound_buffer->Samples;
+    i16 *sample_out = NULL;
+
     /* Calculate region sizes */
-    void *region1 = (u8*)AudioRingBuffer.Data + byte_to_lock;
+    void *region1 = (u8*)GlobalAudioRingBuffer.Data + byte_to_lock;
     int region1_size = bytes_to_write;
+
     if(region1_size + byte_to_lock > sound_output->SecondaryBufferSize)
         region1_size = sound_output->SecondaryBufferSize - byte_to_lock;
 
-    void *region2 = AudioRingBuffer.Data;
+    void *region2 = GlobalAudioRingBuffer.Data;
     int region2_size = bytes_to_write - region1_size;
-
-    i16 *samples = sound_buffer->Samples;
-    i16 *sample_out = NULL;
 
     /* Fill region 1 */
     int region1_sample_count = region1_size / sound_output->BytesPerSample;
     sample_out = (i16*)region1;
-    for (int sample_index = 0; sample_index < region1_sample_count; ++sample_index)
+    for (int i = 0; i < region1_sample_count; ++i)
     {
         *sample_out++ = *samples++;     // L
         *sample_out++ = *samples++;     // R
+        ++sound_output->RunningSampleIndex;
     }
 
     /* Fill region 2 */
     int region2_sample_count = region2_size / sound_output->BytesPerSample;
     sample_out = (i16*)region2;
-    for (int sample_index = 0; sample_index < region2_sample_count; ++ sample_index)
+    for (int i = 0; i < region2_sample_count; ++i)
     {
         *sample_out++ = *samples;     // L
         *sample_out++ = *samples;     // R
+        ++sound_output->RunningSampleIndex;
     }
 }
+
+internal int
+sdl_GetWindowRefreshRate(SDL_Window *Window)
+{
+    SDL_DisplayMode Mode;
+    int DisplayIndex = SDL_GetWindowDisplayIndex(Window);
+    int DefaultRefreshRate = 60;
+    if (SDL_GetDesktopDisplayMode(DisplayIndex, &Mode) != 0)
+    {
+        return DefaultRefreshRate;
+    }
+    if (Mode.refresh_rate == 0)
+    {
+        return DefaultRefreshRate;
+    }
+    return Mode.refresh_rate;
+}
+
+#if DEBUG
+internal void
+sdl_DebugDrawVertical(struct sdl_offscreen_buffer *BackBuffer,
+                      int X,
+                      int Top,
+                      int Bottom,
+                      u32 Color)
+{
+    u8 *Pixel = ((u8*)BackBuffer->Memory +
+                 X * BackBuffer->BytesPerPixel +
+                 Top * BackBuffer->Pitch);
+
+    for(int y = Top; y < Bottom; ++y)
+    {
+        *(u32*)Pixel = Color;
+        Pixel += BackBuffer->Pitch;
+    }
+}
+
+internal inline void
+sdl_DrawSoundBufferMarker(struct sdl_offscreen_buffer *BackBuffer,
+                          struct sdl_sound_output *SoundOutput,
+                          f32 C, int PadX, int Top,
+                          int Bottom, int Value, u32 Color)
+{
+    /* Assert(value < soundOutput -> Secondary buffer size); */
+    f32 x32 = C * (f32)Value;
+    int X = PadX + (int)x32;
+    sdl_DebugDrawVertical(BackBuffer, X, Top, Bottom, Color);
+}
+
+internal void
+sdl_DebugSyncDisplay(struct sdl_offscreen_buffer *BackBuffer,
+                     int MarkerCount,
+                     struct sdl_debug_time_marker *Markers,
+                     struct sdl_sound_output *SoundOutput,
+                     f32 TargetSecondsPerFrame)
+{
+    int PadX = 16;
+    int PadY = 16;
+    int Top = PadY;
+    int Bottom = (BackBuffer->Height / 2) - PadY;
+
+    f32 C = (f32)(BackBuffer->Width - 2*PadX) / (f32)SoundOutput->SecondaryBufferSize;
+    for(int MarkerIndex = 0; MarkerIndex < MarkerCount; ++MarkerIndex)
+    {
+        struct sdl_debug_time_marker *ThisMarker = &Markers[MarkerIndex];
+        sdl_DrawSoundBufferMarker(BackBuffer, SoundOutput, C, PadX, Top, Bottom, ThisMarker->PlayCursor,  0xFFFFFFFF);
+        sdl_DrawSoundBufferMarker(BackBuffer, SoundOutput, C, PadX, Top, Bottom, ThisMarker->WriteCursor, 0xFFFF0000);
+    }
+}
+#endif
 
 internal struct sdl_window_dimension
 sdl_WindowGetDimension(SDL_Window *window)
@@ -268,6 +332,7 @@ sdl_ResizeBackBuffer(struct sdl_offscreen_buffer *screenbuffer, SDL_Window *wind
     screenbuffer->Width = width;
     screenbuffer->Height = height;
     screenbuffer->Pitch = width * bytes_per_pixel;
+    screenbuffer->BytesPerPixel = bytes_per_pixel;
     // screenbuffer->Memory = malloc(screenbuffer->Width * screenbuffer->Height * bytes_per_pixel);
     screenbuffer->Memory = mmap(NULL,
                         screenbuffer->Width * screenbuffer->Height * bytes_per_pixel,
@@ -790,7 +855,7 @@ sdl_ExitGame (SDL_Window *window)
     if (renderer)                   SDL_DestroyRenderer(renderer);
     if (window)                     SDL_DestroyWindow(window);
 #if 0
-    if (AudioRingBuffer.data)            free(AudioRingBuffer.data);
+    if (GlobalAudioRingBuffer.data)            free(GlobalAudioRingBuffer.data);
 #endif
     SDL_Quit();
     return;
@@ -813,7 +878,7 @@ main (void)
     /*
      * Game Window Initialization
      */
-    SDL_Window *window = sdl_InitGame(640, 480);
+    SDL_Window *window = sdl_InitGame(960, 540);
     if(!window) goto __EXIT__;
 
     SDL_Log("Refresh rate is %d Hz\n", sdl_GetWindowRefreshRate(window));
@@ -866,6 +931,15 @@ main (void)
                                           -1, 0);
 
     /* TODO: SDL_Assert with break for debug chekcing game memory allocation*/
+    /* Assert(GameMemory.PermanentStorage != MAP_FAILED); */
+
+#if DEBUG
+    int DebugTimeMarkerIndex = 0;
+    //  const int debugmarkerscount = GameUpdateHz / 2;
+    //  struct sdl_debug_time_marker DebugTimeMarkers[debugmarkerscount] = {0};
+    int TimeMarkerCount = GameUpdateHz/2;
+    struct sdl_debug_time_marker *DebugTimeMarkers = calloc((size_t)(TimeMarkerCount), sizeof(*DebugTimeMarkers));
+#endif
 
     /*
      * Game Performance initialization
@@ -929,7 +1003,31 @@ main (void)
         /* Vefore Update Window to no skip vblanks */
         u64 EndCounter = SDL_GetPerformanceCounter();
 
+#if DEBUG
+        // sdl_DebugSyncDisplay(&GlobalBackBuffer,
+        //                      ArrayCount(DebugTimeMarkers), DebugTimeMarkers,
+        //                      &SoundOutput, TargetSecondsPerFrame);
+        sdl_DebugSyncDisplay(&GlobalBackBuffer,
+                             TimeMarkerCount, DebugTimeMarkers,
+                             &sound_output, TargetSecondsPerFrame);
+#endif
+
         sdl_UpdateWindow(window, &GlobalBackBuffer);
+
+#if DEBUG
+        {
+            // struct sdl_debug_time_marker *Marker = &DebugTimeMarkers[DebugTimeMarkerIndex++];
+            struct sdl_debug_time_marker *Marker = &DebugTimeMarkers[DebugTimeMarkerIndex];
+            // if(DebugTimeMarkerIndex > ArrayCount(DebugTimeMarkers))
+            // {
+            //     DebugTimeMarkersIndex = 0;
+            // }
+            DebugTimeMarkerIndex++;
+            DebugTimeMarkerIndex %= TimeMarkerCount;
+            Marker->PlayCursor = GlobalAudioRingBuffer.PlayCursor;
+            Marker->WriteCursor = GlobalAudioRingBuffer.WriteCursor;
+        }
+#endif
 
         /* Do the rendering math */
         u64 EndCycleCount = _rdtsc();
@@ -947,6 +1045,9 @@ main (void)
 
     exitval = EXIT_SUCCESS;
 __EXIT__:
+#if DEBUG
+    free(DebugTimeMarkers);
+#endif
     if (sound_output.AudioDevice > 0) {
         free(samples);
         SDL_CloseAudioDevice(sound_output.AudioDevice);
