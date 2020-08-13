@@ -64,21 +64,21 @@ struct sdl_debug_time_marker
     size_t FlipPlayCursor;
     size_t FlipWriteCursor;
 };
+#endif
 
-struct sdl_debug_audio
+struct sdl_audio_counters
 {
     // u64 ExpectedSoundBytesPerFrame;
     // f64 SecondsLeftUntilFlip;
     // u64 ExpectedBytesUntilFlip;
-    // u64 ExpectedFrameBoundaryByte;
     // u64 SafeWriteCursor;
     // bool AudioCardIsLowLatency;
     u64 FlipWallClock;
     u64 AudioWallClock;
     f64 FromBeginToAudioSeconds;
+    u64 ExpectedFrameBoundaryByte;
     u64 TargetCursor;
 };
-#endif
 
 struct sdl_performance_counters
 {

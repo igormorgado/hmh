@@ -8,12 +8,8 @@
 /* Since we are using SDL Textures we still use SDL dependant code */
 global_variable struct sdl_offscreen_buffer GlobalBackBuffer;
 global_variable struct sdl_audio_ring_buffer GlobalAudioRingBuffer;
+
 global_variable bool GlobalPaused;
-
-#if DEBUG
-global_variable struct sdl_debug_audio GlobalDebugAudio;
-#endif
-
 
 #if DEBUG
 internal struct debug_read_file_result
@@ -159,10 +155,11 @@ sdl_InitAudio(struct sdl_sound_output *sound_output)
     }
 }
 
-internal u64
+internal void
 sdl_SoundGetCursors(struct sdl_audio_ring_buffer *ring_buffer,
                     struct sdl_sound_output *sound_output,
                     struct sdl_performance_counters *perf,
+                    struct sdl_audio_counters *audio_perf,
                     u64 *ByteToLock, u64 *BytesToWrite)
 {
 
@@ -171,7 +168,7 @@ sdl_SoundGetCursors(struct sdl_audio_ring_buffer *ring_buffer,
     *ByteToLock = (sound_output->RunningSampleIndex * sound_output->BytesPerSample) % sound_output->SecondaryBufferSize;
 
     u64 ExpectedSoundBytesPerFrame = (sound_output->SamplesPerSecond * sound_output->BytesPerSample)/ perf->GameUpdateHz;
-    f64 SecondsLeftUntilFlip = perf->TargetSecondsPerFrame - GlobalDebugAudio.FromBeginToAudioSeconds;
+    f64 SecondsLeftUntilFlip = perf->TargetSecondsPerFrame - audio_perf->FromBeginToAudioSeconds;
     u64 ExpectedBytesUntilFlip = (size_t)(( SecondsLeftUntilFlip / perf->TargetSecondsPerFrame )*(f64)ExpectedSoundBytesPerFrame);
     u64 ExpectedFrameBoundaryByte = ring_buffer->PlayCursor + ExpectedSoundBytesPerFrame;
 
@@ -209,31 +206,8 @@ sdl_SoundGetCursors(struct sdl_audio_ring_buffer *ring_buffer,
     }
     SDL_UnlockAudioDevice(sound_output->AudioDevice);
 
-#if DEBUG
-    GlobalDebugAudio.TargetCursor = TargetCursor;
-#endif
-
-#if 0
-    /* O que sera' necessario:
-     *  TimeMarkerCount  // Criado por mim == ArrayCount(DebugTImeMarkers)
-     *  DebugTimeMarkers
-     *  TargetSecondsPerFrame
-     *  DebugTimeMarkerIndex
-     */
-
-    /* old method */
-     int target_cursor = ((( sound_output->LatencySampleCount
-                           * sound_output->BytesPerSample)
-                          + GlobalAudioRingBuffer.PlayCursor)
-                         % sound_output->SecondaryBufferSize);
-
-     if (*byte_to_lock > target_cursor)
-         *bytes_to_write = sound_output->SecondaryBufferSize - *byte_to_lock + target_cursor;
-     else
-         *bytes_to_write = target_cursor - *byte_to_lock;
-#endif
-
-    return ExpectedFrameBoundaryByte;
+    audio_perf->TargetCursor = TargetCursor;
+    audio_perf->ExpectedFrameBoundaryByte = ExpectedFrameBoundaryByte;
 }
 
 internal void
@@ -1016,10 +990,12 @@ main (void)
 {
     int exitval = EXIT_FAILURE;
     int retval = RETURN_SUCCESS;
+    SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_DEBUG);
 
     /*
      * Game Window Initialization
      */
+
     SDL_Window *window = sdl_InitGame(960, 540);
     if(!window) goto __EXIT__;
 
@@ -1049,8 +1025,8 @@ main (void)
     sound_output.RunningSampleIndex = 0;
     sound_output.BytesPerSample = sizeof(i16) * 2;
     sound_output.SecondaryBufferSize = sound_output.SamplesPerSecond * sound_output.BytesPerSample;
-    sound_output.LatencySampleCount = 3 * sound_output.SamplesPerSecond / perf.GameUpdateHz;
-    sound_output.SafetyBytes = (sound_output.SamplesPerSecond * sound_output.BytesPerSample / perf.GameUpdateHz)/3;
+    sound_output.LatencySampleCount = 2 * sound_output.SamplesPerSecond / perf.GameUpdateHz;
+    sound_output.SafetyBytes = (sound_output.SamplesPerSecond * sound_output.BytesPerSample / perf.GameUpdateHz)/2;
 
     /* Initialize sound paused*/
     sdl_InitAudio(&sound_output);
@@ -1075,25 +1051,25 @@ main (void)
                                           MAP_ANONYMOUS | MAP_PRIVATE,
                                           -1, 0);
 
-    /* TODO: SDL_Assert with break for debug chekcing game memory allocation*/
-    /* Assert(GameMemory.PermanentStorage != MAP_FAILED); */
+    /* TODO: Assert(GameMemory.PermanentStorage != MAP_FAILED); */
 
 #if DEBUG
     int DebugTimeMarkerIndex = 0;
     int TimeMarkerCount = perf.GameUpdateHz/2;
     struct sdl_debug_time_marker *DebugTimeMarkers = calloc((size_t)(TimeMarkerCount), sizeof(*DebugTimeMarkers));
-
-    GlobalDebugAudio.FlipWallClock = SDL_GetPerformanceCounter();
-    size_t AudioLatencyBytes = 0;
-    f32 AudioLatencySeconds = 0.0f;
 #endif
 
-    /*
-     * Game Performance initialization
-     */
+    /* Game Performance initialization */
     perf.LastCounter = SDL_GetPerformanceCounter();
     perf.LastCycleCount = _rdtsc();
     perf.PerfCountFrequency = SDL_GetPerformanceFrequency();
+
+    /* Audio Performance Counters */
+    struct sdl_audio_counters audio_perf = {0};
+    u64 AudioLatencyBytes = 0;
+    f64 AudioLatencySeconds = 0.0;
+    audio_perf.FlipWallClock = SDL_GetPerformanceCounter();
+
 
     bool running = true;
     while(running == true)
@@ -1118,30 +1094,29 @@ main (void)
             /* Blit Video */
             GameUpdateAndRender(&game_memory, new_input, &screen_buffer);
 
-#if DEBUG
-            GlobalDebugAudio.AudioWallClock = SDL_GetPerformanceCounter();
-            GlobalDebugAudio.FromBeginToAudioSeconds =
-                    sdl_GetSecondsElapsed(GlobalDebugAudio.FlipWallClock,
-                                          GlobalDebugAudio.AudioWallClock,
+            audio_perf.AudioWallClock = SDL_GetPerformanceCounter();
+            audio_perf.FromBeginToAudioSeconds =
+                    sdl_GetSecondsElapsed(audio_perf.FlipWallClock,
+                                          audio_perf.AudioWallClock,
                                           perf.PerfCountFrequency);
-#endif
 
             /* Render Audio */
             // Line 1016: GetCurrentPosition()
             u64 byte_to_lock = 0;
             u64 bytes_to_write = 0;
             u64 ExpectedFrameBoundaryByte;
-            ExpectedFrameBoundaryByte = sdl_SoundGetCursors(&GlobalAudioRingBuffer,
-                                                            &sound_output,
-                                                            &perf,
-                                                            &byte_to_lock,
-                                                            &bytes_to_write);
+            sdl_SoundGetCursors(&GlobalAudioRingBuffer,
+                                &sound_output,
+                                &perf,
+                                &audio_perf,
+                                &byte_to_lock, &bytes_to_write);
 
             struct game_sound_output_buffer sound_buffer = {0};
             sound_buffer.SamplesPerSecond = sound_output.SamplesPerSecond;
             sound_buffer.SampleCount = bytes_to_write / sound_output.BytesPerSample;
             sound_buffer.Samples = samples;
             GameGetSoundSamples(&game_memory, &sound_buffer);
+
 #if DEBUG
             struct sdl_debug_time_marker *Marker = &DebugTimeMarkers[DebugTimeMarkerIndex];
             Marker->OutputPlayCursor = GlobalAudioRingBuffer.PlayCursor;
@@ -1149,6 +1124,7 @@ main (void)
             Marker->OutputLocation = byte_to_lock;
             Marker->OutputByteCount = bytes_to_write;
             Marker->ExpectedFlipPlayCursor = ExpectedFrameBoundaryByte;
+#endif
 
             u64 UnwrappedWriteCursor = GlobalAudioRingBuffer.WriteCursor;
             if(UnwrappedWriteCursor < GlobalAudioRingBuffer.PlayCursor)
@@ -1163,12 +1139,11 @@ main (void)
 
             char TextBuffer[256];
             snprintf(TextBuffer, sizeof(TextBuffer),
-                    "BTL: %lu TC: %lu BTW: %lu - PC: %lu WC: %lu - DELTA: %lu (%fs)\n",
-                    byte_to_lock, GlobalDebugAudio.TargetCursor, bytes_to_write,
+                    "BTL: %6lu TC: %6lu BTW: %6lu - PC: %6lu WC: %6lu - DELTA: %5lu (%9.7fs)\n",
+                    byte_to_lock, audio_perf.TargetCursor, bytes_to_write,
                     GlobalAudioRingBuffer.PlayCursor, GlobalAudioRingBuffer.WriteCursor,
                     AudioLatencyBytes, AudioLatencySeconds);
             SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "%s", TextBuffer);
-#endif
 
             /* "Blit" Audio*/
             sdl_FillSoundBuffer(&sound_output, byte_to_lock, bytes_to_write, &sound_buffer);
@@ -1189,17 +1164,13 @@ main (void)
 
             sdl_UpdateWindow(window, &GlobalBackBuffer);
 
-#if DEBUG
-            GlobalDebugAudio.FlipWallClock = SDL_GetPerformanceCounter();
-#endif
+            audio_perf.FlipWallClock = SDL_GetPerformanceCounter();
 
 #if DEBUG
-            {
-                // TODO: Assert(DebugTimeMarkerIndex < ArrayCount(DebugTimeMarkers));
-                struct sdl_debug_time_marker *Marker = &DebugTimeMarkers[DebugTimeMarkerIndex];
-                Marker->FlipPlayCursor = GlobalAudioRingBuffer.PlayCursor;
-                Marker->FlipWriteCursor = GlobalAudioRingBuffer.WriteCursor;
-            }
+            // TODO: Assert(DebugTimeMarkerIndex < ArrayCount(DebugTimeMarkers));
+             struct sdl_debug_time_marker *ptrmarker = DebugTimeMarkers + DebugTimeMarkerIndex;
+             ptrmarker->FlipPlayCursor = GlobalAudioRingBuffer.PlayCursor;
+             ptrmarker->FlipWriteCursor = GlobalAudioRingBuffer.WriteCursor;
 #endif
 
             /* Eval frame rate */

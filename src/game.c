@@ -12,7 +12,7 @@ internal i32
 GameOutputSound(struct game_sound_output_buffer *SoundBuffer, f32 ToneHz)
 {
     local_persist f32 tSine;
-    i16 amplitude = 3000;
+    i16 amplitude = 1000;
     f32 wave_period = SoundBuffer->SamplesPerSecond / ToneHz;
 
     i16 *sample_out = SoundBuffer->Samples;
