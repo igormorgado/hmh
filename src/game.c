@@ -11,18 +11,19 @@ SafeTruncateUInt64(u64 Value)
 internal i32
 GameOutputSound(struct game_sound_output_buffer *SoundBuffer, f32 ToneHz)
 {
-    local_persist f32 TSine;
+    local_persist f32 tSine;
     i16 amplitude = 3000;
     f32 wave_period = SoundBuffer->SamplesPerSecond / ToneHz;
 
     i16 *sample_out = SoundBuffer->Samples;
-    for(size_t sample_index = 0; sample_index < SoundBuffer->SampleCount; ++sample_index)
+    for(size_t i = 0; i < SoundBuffer->SampleCount; ++i)
     {
-        f32 sine_value = sinf(TSine);
+        f32 sine_value = sinf(tSine);
         i16 sample_value = (i16)(roundf(sine_value * amplitude));
         *sample_out++ = sample_value;
         *sample_out++ = sample_value;
-        TSine += TAU / wave_period;
+        tSine += TAU / wave_period;
+        if(tSine > TAU) tSine -= TAU;
     }
     return RETURN_SUCCESS;
 }
@@ -70,15 +71,14 @@ CreateGameState(void)
 internal void
 GameUpdateAndRender(struct game_memory *Memory,
                     struct game_input *Input,
-                    struct game_offscreen_buffer *ScreenBuffer,
-                    struct game_sound_output_buffer *SoundBuffer)
+                    struct game_offscreen_buffer *ScreenBuffer)
 {
     /* TODO: Assert(sizeof(struct GameState) <= Memory->PermanentStorageSize)
      * Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) ==
      *      (ArrayCount(Input->Controllers[0].Buttons)));
      */
 
-    struct game_state *GameState = (struct game_state *)Memory->PersistentStorage;
+    struct game_state *GameState = (struct game_state *)Memory->PermanentStorage;
 
     if(!Memory->IsInitialized)
     {
@@ -127,6 +127,14 @@ GameUpdateAndRender(struct game_memory *Memory,
             GameState->GreenOffset += 1;
         }
     }
-    GameOutputSound(SoundBuffer, GameState->ToneHz);
+    // GameOutputSound(SoundBuffer, GameState->ToneHz);
     RenderWeirdGradient(ScreenBuffer, GameState->BlueOffset, GameState->GreenOffset, GameState->RedOffset);
+}
+
+internal void
+GameGetSoundSamples(struct game_memory *Memory,
+                    struct game_sound_output_buffer *SoundBuffer)
+{
+    struct game_state *GameState = (struct game_state *)Memory->PermanentStorage;
+    GameOutputSound(SoundBuffer, GameState->ToneHz);
 }

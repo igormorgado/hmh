@@ -35,9 +35,9 @@ struct sdl_window_dimension
 
 struct sdl_audio_ring_buffer
 {
-    int Size;
-    int WriteCursor;
-    int PlayCursor;
+    u64 Size;
+    u64 WriteCursor;
+    u64 PlayCursor;
     void *Data;
 };
 
@@ -47,14 +47,53 @@ struct sdl_sound_output
     int SamplesPerSecond;
     u32 RunningSampleIndex;
     int BytesPerSample;
-    int SecondaryBufferSize; /* todo: size_t? */
+    size_t SecondaryBufferSize; /* Why not inside sdl_audio_ring_buffer ? */
+    size_t SafetyBytes;
     int LatencySampleCount;
+    f32 tSine;
 };
 
+#if DEBUG
 struct sdl_debug_time_marker
 {
-    int PlayCursor;
-    int WriteCursor;
+    size_t OutputPlayCursor;
+    size_t OutputWriteCursor;
+    size_t OutputLocation;
+    size_t OutputByteCount;
+    size_t ExpectedFlipPlayCursor;
+    size_t FlipPlayCursor;
+    size_t FlipWriteCursor;
+};
+
+struct sdl_debug_audio
+{
+    // u64 ExpectedSoundBytesPerFrame;
+    // f64 SecondsLeftUntilFlip;
+    // u64 ExpectedBytesUntilFlip;
+    // u64 ExpectedFrameBoundaryByte;
+    // u64 SafeWriteCursor;
+    // bool AudioCardIsLowLatency;
+    u64 FlipWallClock;
+    u64 AudioWallClock;
+    f64 FromBeginToAudioSeconds;
+    u64 TargetCursor;
+};
+#endif
+
+struct sdl_performance_counters
+{
+    int GameUpdateHz;
+    f64 TargetSecondsPerFrame;
+    u64 PerfCountFrequency;
+    u64 LastCycleCount;
+    u64 EndCycleCount;
+    u64 CounterElapsed;
+    u64 CyclesElapsed;
+    f64 MSPerFrame;
+    f64 FPS;
+    f64 MCPF;
+    u64 LastCounter;
+    u64 EndCounter;
 };
 
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];

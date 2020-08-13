@@ -135,8 +135,8 @@ struct game_memory
 {
     bool IsInitialized;
 
-    size_t PersistentStorageSize;
-    void *PersistentStorage;
+    size_t PermanentStorageSize;
+    void *PermanentStorage;
 
     size_t TransientStorageSize;
     void *TransientStorage;
@@ -158,7 +158,9 @@ internal bool DEBUGPlataformWriteEntireFile(const char *Filename, u32 MemorySize
 
 internal void GameUpdateAndRender(struct game_memory *Memory,
                                   struct game_input *Input,
-                                  struct game_offscreen_buffer *ScreenBuffer,
+                                  struct game_offscreen_buffer *ScreenBuffer);
+
+internal void GameGetSoundSamples(struct game_memory *Memory,
                                   struct game_sound_output_buffer *SoundBuffer);
 
 #endif /* __GAME_H__ */
