@@ -1,5 +1,7 @@
+#include "game.h"
 
 #include "sdl_game.h"
+
 internal inline u32
 SafeTruncateUInt64(u64 Value)
 {
@@ -103,7 +105,7 @@ GameUpdateAndRender(struct game_memory *Memory,
         {
             /* TODO: Tune ananlog movement */
             GameState->BlueOffset += (i16)(4.0f * Controller->StickAverageX);
-            GameState->ToneHz = 256.0f + 128.0f * Controller->StickAverageY;
+            GameState->ToneHz = 512.0f + 256.0f * Controller->StickAverageY;
         }
         else
         {

@@ -1,14 +1,14 @@
-/* Plataform independant code */
+/* Plataform independant header/code */
 #include "game.h"
 #include "game.c"
 
-/* Plataform dependent code */
+/* Plataform dependent header */
 #include "sdl_game.h"
 
 /* Since we are using SDL Textures we still use SDL dependant code */
+/* TODO: MOVE GLOBAL TO LOCAL */
 global_variable struct sdl_offscreen_buffer GlobalBackBuffer;
 global_variable struct sdl_audio_ring_buffer GlobalAudioRingBuffer;
-
 global_variable bool GlobalPaused;
 
 #if DEBUG
@@ -110,7 +110,6 @@ sdl_AudioCallback(void *userdata, u8 *audiodata, int length)
     memcpy(audiodata, (u8*)(ringbuffer->Data) + ringbuffer->PlayCursor, region1size);
     memcpy(audiodata + region1size, ringbuffer->Data, region2size);
     ringbuffer->PlayCursor = (ringbuffer->PlayCursor + length) % ringbuffer->Size;
-    // ringbuffer->WriteCursor = (ringbuffer->PlayCursor + 2048) % ringbuffer->Size;
     ringbuffer->WriteCursor = (ringbuffer->PlayCursor + length) % ringbuffer->Size;
 }
 
@@ -163,7 +162,6 @@ sdl_SoundGetCursors(struct sdl_audio_ring_buffer *ring_buffer,
                     u64 *ByteToLock, u64 *BytesToWrite)
 {
 
-    // LOCKING HERE
     SDL_LockAudioDevice(sound_output->AudioDevice);
     *ByteToLock = (sound_output->RunningSampleIndex * sound_output->BytesPerSample) % sound_output->SecondaryBufferSize;
 
@@ -292,7 +290,7 @@ sdl_DrawSoundBufferMarker(struct sdl_offscreen_buffer *BackBuffer,
                           f32 C, int PadX, int Top,
                           int Bottom, int Value, u32 Color)
 {
-    /* Assert(value < soundOutput -> Secondary buffer size); */
+    /* TODO: Assert(value < soundOutput -> Secondary buffer size); */
     f32 x32 = C * (f32)Value;
     int X = PadX + (int)x32;
     sdl_DebugDrawVertical(BackBuffer, X, Top, Bottom, Color);
@@ -314,7 +312,7 @@ sdl_DebugSyncDisplay(struct sdl_offscreen_buffer *BackBuffer,
     f32 C = (f32)(BackBuffer->Width - 2*PadX) / (f32)SoundOutput->SecondaryBufferSize;
     for(int MarkerIndex = 0; MarkerIndex < MarkerCount; ++MarkerIndex)
     {
-        struct sdl_debug_time_marker *ThisMarker = &Markers[MarkerIndex];
+        struct sdl_debug_time_marker *ThisMarker = Markers + MarkerIndex;
         // TODO: Assert(ThisMarker->OutputPlayCursor < SoundOutput->SecondaryBufferSize);
         // TODO: Assert(ThisMarker->OutputWriteCursor < SoundOutput->SecondaryBufferSize);
         // TODO: Assert(ThisMarker->OutputLocation < SoundOutput->SecondaryBufferSize);
@@ -423,7 +421,7 @@ internal int
 sdl_UpdateWindow(SDL_Window *window, struct sdl_offscreen_buffer *screenbuffer)
 {
     // TODO: ASSERT WINDOW not null
-    // TODO: Handle all those "ifs"  with SDL_Asserts.
+    // TODO: Assert Handle all those "ifs"  with SDL_Asserts.
     int retval = RETURN_FAILURE;
     if(!screenbuffer->Texture)
     {
@@ -491,8 +489,6 @@ sdl_HandleWindow(const SDL_Event event)
         {
             SDL_Log("%s: Window size changed (%d, %d)\n",
                     __func__, event.window.data1, event.window.data2);
-            //SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
-            //sdl_ResizeBackBuffer(window, event.window.data1, event.window.data2);
         } break;
 
         case SDL_WINDOWEVENT_FOCUS_GAINED:
@@ -633,8 +629,6 @@ sdl_HandleKey(const SDL_Event event,
             {
                 SDL_Log("Escape Was down\n");
             }
-            // This closes the program
-            // return RETURN_EXIT;
         }
         else if((KeyCode == SDLK_RETURN) && (KeyMod & KMOD_ALT))
         {
@@ -930,13 +924,13 @@ sdl_ExitGame (SDL_Window *window)
     SDL_Log ("Exiting\n");
     sdl_GameControllersQuit();
     SDL_Renderer *renderer = SDL_GetRenderer(window);
-    // TODO: If mmap need to munmap
     //if (GlobalBackBuffer.memory)    free(GlobalBackBuffer.memory);
     munmap(GlobalBackBuffer.Memory, GlobalBackBuffer.Width * GlobalBackBuffer.Height * SDL_BYTESPERPIXEL(SDL_PIXELFORMAT_ARGB8888));
     if (GlobalBackBuffer.Texture)   SDL_DestroyTexture(GlobalBackBuffer.Texture);
     if (renderer)                   SDL_DestroyRenderer(renderer);
     if (window)                     SDL_DestroyWindow(window);
 #if 0
+    // No need to free since it was not malloc'd
     if (GlobalAudioRingBuffer.data)            free(GlobalAudioRingBuffer.data);
 #endif
     SDL_Quit();
@@ -961,14 +955,13 @@ sdl_WaitFrame(struct sdl_performance_counters *perf)
             SDL_Delay(TimeToSleep);
         }
 
-        // Assert(SDLGetSecondsElapsed(LastCounter, SDL_GetPerformanceCounter()) < TargetSecondsPerFrame)
+        // TODO: Assert(SDLGetSecondsElapsed(LastCounter, SDL_GetPerformanceCounter()) < TargetSecondsPerFrame)
         while (sdl_GetSecondsElapsed(perf->LastCounter, SDL_GetPerformanceCounter(), perf->PerfCountFrequency) < perf->TargetSecondsPerFrame)
         {
             // Waiting...
         }
     }
 
-    /* Vefore Update Window to no skip vblanks */
     perf->EndCounter = SDL_GetPerformanceCounter();
 }
 
@@ -1101,10 +1094,8 @@ main (void)
                                           perf.PerfCountFrequency);
 
             /* Render Audio */
-            // Line 1016: GetCurrentPosition()
             u64 byte_to_lock = 0;
             u64 bytes_to_write = 0;
-            u64 ExpectedFrameBoundaryByte;
             sdl_SoundGetCursors(&GlobalAudioRingBuffer,
                                 &sound_output,
                                 &perf,
@@ -1123,7 +1114,7 @@ main (void)
             Marker->OutputWriteCursor = GlobalAudioRingBuffer.WriteCursor;
             Marker->OutputLocation = byte_to_lock;
             Marker->OutputByteCount = bytes_to_write;
-            Marker->ExpectedFlipPlayCursor = ExpectedFrameBoundaryByte;
+            Marker->ExpectedFlipPlayCursor = audio_perf.ExpectedFrameBoundaryByte;
 #endif
 
             u64 UnwrappedWriteCursor = GlobalAudioRingBuffer.WriteCursor;
@@ -1188,9 +1179,6 @@ main (void)
             ++DebugTimeMarkerIndex;
             DebugTimeMarkerIndex %= TimeMarkerCount;
 #endif
-
-
-            /* Do the rendering math */
         }
     }
 
