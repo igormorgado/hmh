@@ -3,7 +3,7 @@
 #include "sdl_game.h"
 
 internal inline u32
-SafeTruncateUInt64(u64 Value)
+safe_truncate_u64(u64 Value)
 {
     /* TODO: Assert (value <= 0xFFFFFFFF) */
     u32 Result = (u32)Value;
@@ -15,17 +15,18 @@ GameOutputSound(struct game_sound_output_buffer *SoundBuffer, f32 ToneHz)
 {
     local_persist f32 tSine;
     i16 amplitude = 1000;
-    f32 wave_period = SoundBuffer->SamplesPerSecond / ToneHz;
+    f32 wave_period = SoundBuffer->samples_per_second / ToneHz;
 
-    i16 *sample_out = SoundBuffer->Samples;
-    for(size_t i = 0; i < SoundBuffer->SampleCount; ++i)
+    i16 *sample_out = SoundBuffer->samples;
+    for(size_t i = 0; i < SoundBuffer->sample_count; ++i)
     {
         f32 sine_value = sinf(tSine);
         i16 sample_value = (i16)(roundf(sine_value * amplitude));
         *sample_out++ = sample_value;
         *sample_out++ = sample_value;
-        tSine += TAU / wave_period;
-        if(tSine > TAU) tSine -= TAU;
+        // tSine += TAU / wave_period;
+        tSine += 2.0f * PI * 1.0f / (f32)wave_period;
+        if(tSine > 2.0f * PI) tSine -= 2.0f * PI;
     }
     return RETURN_SUCCESS;
 }
@@ -75,27 +76,27 @@ GameUpdateAndRender(struct game_memory *Memory,
                     struct game_input *Input,
                     struct game_offscreen_buffer *ScreenBuffer)
 {
-    /* TODO: Assert(sizeof(struct GameState) <= Memory->PermanentStorageSize)
+    /* TODO: Assert(sizeof(struct GameState) <= Memory->permanent_storageSize)
      * Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) ==
      *      (ArrayCount(Input->Controllers[0].Buttons)));
      */
 
-    struct game_state *GameState = (struct game_state *)Memory->PermanentStorage;
+    struct game_state *GameState = (struct game_state *)Memory->permanent_storage;
 
-    if(!Memory->IsInitialized)
+    if(!Memory->is_initialized)
     {
 
 #if DEBUG
         const char *Filename = __FILE__;
         struct debug_read_file_result File = DEBUGPlataformReadEntireFile(Filename);
-        if(File.Contents)
+        if(File.contents)
         {
-            DEBUGPlataformWriteEntireFile("test.out", File.ContentsSize, File.Contents);
-            DEBUGPlataformFreeFileMemory(File.Contents);
+            DEBUGPlataformWriteEntireFile("test.out", File.contents_size, File.contents);
+            DEBUGPlataformFreeFileMemory(File.contents);
         }
 #endif
         GameState->ToneHz = 256.0f;
-        Memory->IsInitialized = true;
+        Memory->is_initialized = true;
     }
 
     for(size_t i = 0; i < ArrayCount(Input->Controllers); ++i)
@@ -137,6 +138,6 @@ internal void
 GameGetSoundSamples(struct game_memory *Memory,
                     struct game_sound_output_buffer *SoundBuffer)
 {
-    struct game_state *GameState = (struct game_state *)Memory->PermanentStorage;
+    struct game_state *GameState = (struct game_state *)Memory->permanent_storage;
     GameOutputSound(SoundBuffer, GameState->ToneHz);
 }

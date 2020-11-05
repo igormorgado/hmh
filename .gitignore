@@ -5,4 +5,6 @@ hmhstreams/
 hmpenguin/
 ext/
 local/
+src/hmh
+.gdb_history
 

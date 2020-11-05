@@ -11,6 +11,7 @@
 
 /* TODO: SDL Assert configuration before include */
 #include <SDL2/SDL_assert.h>
+#include <assert.h>
 
 /*
  * Plataform dependant code
@@ -35,34 +36,34 @@ struct sdl_window_dimension
 
 struct sdl_audio_ring_buffer
 {
-    u64 Size;
-    u64 WriteCursor;
-    u64 PlayCursor;
-    void *Data;
+    size_t size;
+    size_t write_cursor;
+    size_t play_cursor;
+    void *data;
 };
 
 struct sdl_sound_output
 {
-    SDL_AudioDeviceID AudioDevice;
-    int SamplesPerSecond;
-    u32 RunningSampleIndex;
-    int BytesPerSample;
-    size_t SecondaryBufferSize; /* Why not inside sdl_audio_ring_buffer ? */
-    size_t SafetyBytes;
-    int LatencySampleCount;
-    f32 tSine;
+    SDL_AudioDeviceID audio_device;
+    int samples_per_second;
+    u32 running_sample_index;
+    int bytes_per_sample;
+    size_t secondary_buffer_size; /* Why not inside sdl_audio_ring_buffer ? */
+    int safety_bytes;
+    int latency_sample_count;
+    f32 t_sine;
 };
 
 #if DEBUG
 struct sdl_debug_time_marker
 {
-    size_t OutputPlayCursor;
-    size_t OutputWriteCursor;
-    size_t OutputLocation;
-    size_t OutputByteCount;
-    size_t ExpectedFlipPlayCursor;
-    size_t FlipPlayCursor;
-    size_t FlipWriteCursor;
+    size_t output_play_cursor;
+    size_t output_write_cursor;
+    size_t output_location;
+    size_t output_byte_count;
+    size_t expected_flip_play_cursor;
+    size_t flip_play_cursor;
+    size_t flip_write_cursor;
 };
 #endif
 
@@ -73,27 +74,27 @@ struct sdl_audio_counters
     // u64 ExpectedBytesUntilFlip;
     // u64 SafeWriteCursor;
     // bool AudioCardIsLowLatency;
-    u64 FlipWallClock;
-    u64 AudioWallClock;
-    f64 FromBeginToAudioSeconds;
-    u64 ExpectedFrameBoundaryByte;
-    u64 TargetCursor;
+    u64 flip_wall_clock;
+    u64 audio_wall_clock;
+    f64 from_begin_to_audio_seconds;
+    u64 expected_frame_boundary_byte;
+    u64 target_cursor;
 };
 
 struct sdl_performance_counters
 {
-    int GameUpdateHz;
-    f64 TargetSecondsPerFrame;
-    u64 PerfCountFrequency;
-    u64 LastCycleCount;
-    u64 EndCycleCount;
-    u64 CounterElapsed;
-    u64 CyclesElapsed;
-    f64 MSPerFrame;
-    f64 FPS;
-    f64 MCPF;
-    u64 LastCounter;
-    u64 EndCounter;
+    int game_update_hz;
+    f64 target_seconds_per_frame;
+    u64 performance_count_frequency;
+    u64 last_cycle_count;
+    u64 end_cycle_count;
+    u64 counter_elapsed;
+    u64 cycles_elapsed;
+    f64 ms_per_frame;
+    f64 fps;                /* Frames per second */
+    f64 mcpf;               /* ... ... per frame */
+    u64 last_counter;
+    u64 end_counter;
 };
 
 SDL_GameController *ControllerHandles[MAX_CONTROLLERS];

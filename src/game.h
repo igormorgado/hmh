@@ -25,6 +25,11 @@
 
 #define ArrayCount(array) (sizeof((array)) / sizeof((array)[0]))
 
+#define Align4(Value) ((Value + 3) & ~3)
+#define Align8(Value) ((Value + 7) & ~7)
+#define Align16(Value) ((Value + 15) & ~15)
+
+
 
 typedef int8_t          i8;
 typedef int16_t         i16;
@@ -63,9 +68,9 @@ struct game_offscreen_buffer
 
 struct game_sound_output_buffer
 {
-    int SamplesPerSecond;
-    size_t SampleCount;
-    i16 *Samples;
+    int samples_per_second;
+    size_t sample_count;
+    i16 *samples;
 };
 
 struct game_button_state
@@ -133,21 +138,21 @@ struct game_state
 
 struct game_memory
 {
-    bool IsInitialized;
+    bool is_initialized;
 
-    size_t PermanentStorageSize;
-    void *PermanentStorage;
+    size_t permanent_storage_size;
+    void *permanent_storage;
 
-    size_t TransientStorageSize;
-    void *TransientStorage;
+    size_t transient_storage_size;
+    void *transient_storage;
 };
 
 
 #if DEBUG
 struct debug_read_file_result
 {
-    u32 ContentsSize;
-    void *Contents;
+    size_t contents_size;
+    void *contents;
 };
 
 internal struct debug_read_file_result DEBUGPlataformReadEntireFile(const char *filename);
