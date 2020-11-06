@@ -304,11 +304,11 @@ sdl_DebugDrawVertical(struct sdl_offscreen_buffer *BackBuffer,
 
 internal inline void
 sdl_DrawSoundBufferMarker(struct sdl_offscreen_buffer *BackBuffer,
-                          struct sdl_sound_output *SoundOutput,
+                          struct sdl_sound_output *Sound,
                           f32 C, int PadX, int Top,
                           int Bottom, int Value, u32 Color)
 {
-    /* TODO: Assert(value < soundOutput -> Secondary buffer size); */
+    /* TODO: Assert(value < sound -> Secondary buffer size); */
     f32 x32 = C * (f32)Value;
     int X = PadX + (int)x32;
     sdl_DebugDrawVertical(BackBuffer, X, Top, Bottom, Color);
@@ -319,7 +319,7 @@ sdl_DebugSyncDisplay(struct sdl_offscreen_buffer *BackBuffer,
                      int MarkerCount,
                      struct sdl_debug_time_marker *Markers,
                      int CurrentMarkerIndex,
-                     struct sdl_sound_output *SoundOutput,
+                     struct sdl_sound_output *sound_output,
                      f32 TargetSecondsPerFrame)
 {
     int PadX = 16;
@@ -327,16 +327,16 @@ sdl_DebugSyncDisplay(struct sdl_offscreen_buffer *BackBuffer,
 
     int LineHeight = 64;
 
-    f32 C = (f32)(BackBuffer->Width - 2*PadX) / (f32)SoundOutput->secondary_buffer_size;
+    f32 C = (f32)(BackBuffer->Width - 2*PadX) / (f32)sound_output->secondary_buffer_size;
     for(int MarkerIndex = 0; MarkerIndex < MarkerCount; ++MarkerIndex)
     {
         struct sdl_debug_time_marker *ThisMarker = Markers + MarkerIndex;
-        // TODO: Assert(ThisMarker->OutputPlayCursor < SoundOutput->secondary_buffer_size);
-        // TODO: Assert(ThisMarker->OutputWriteCursor < SoundOutput->secondary_buffer_size);
-        // TODO: Assert(ThisMarker->OutputLocation < SoundOutput->secondary_buffer_size);
-        // TODO: Assert(ThisMarker->OutputByteCount < SoundOutput->secondary_buffer_size);
-        // TODO: Assert(ThisMarker->FlipPlayCursor < SoundOutput->secondary_buffer_size);
-        // TODO: Assert(ThisMarker->FlipWriteCursor < SoundOutput->secondary_buffer_size);
+        // TODO: Assert(ThisMarker->output_play_cursor < sound_output->secondary_buffer_size);
+        // TODO: Assert(ThisMarker->output_write_cursor < sound_output->secondary_buffer_size);
+        // TODO: Assert(ThisMarker->output_location < sound_output->secondary_buffer_size);
+        // TODO: Assert(ThisMarker->ByteCount < sound_output->secondary_buffer_size);
+        // TODO: Assert(ThisMarker->FlipPlayCursor < sound_output->secondary_buffer_size);
+        // TODO: Assert(ThisMarker->FlipWriteCursor < sound_output->secondary_buffer_size);
         u32 PlayColor         = 0xFFFFFFFF;
         u32 WriteColor        = 0xFFFF0000;
         u32 ExpectedFlipColor = 0xFFFFFF00;
@@ -351,24 +351,24 @@ sdl_DebugSyncDisplay(struct sdl_offscreen_buffer *BackBuffer,
 
             int FirstTop = Top;
 
-            sdl_DrawSoundBufferMarker(BackBuffer, SoundOutput, C, PadX, Top, Bottom, ThisMarker->OutputPlayCursor,  PlayColor);
-            sdl_DrawSoundBufferMarker(BackBuffer, SoundOutput, C, PadX, Top, Bottom, ThisMarker->OutputWriteCursor, WriteColor);
+            sdl_DrawSoundBufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->output_play_cursor,  PlayColor);
+            sdl_DrawSoundBufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->output_write_cursor, WriteColor);
 
             Top += LineHeight + PadY;
             Bottom += LineHeight + PadY;
 
-            sdl_DrawSoundBufferMarker(BackBuffer, SoundOutput, C, PadX, Top, Bottom, ThisMarker->OutputLocation,  PlayColor);
-            sdl_DrawSoundBufferMarker(BackBuffer, SoundOutput, C, PadX, Top, Bottom, ThisMarker->OutputLocation + ThisMarker->OutputByteCount, WriteColor);
+            sdl_DrawSoundBufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->output_location,  PlayColor);
+            sdl_DrawSoundBufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->output_location + ThisMarker->output_byte_count, WriteColor);
 
             Top += LineHeight + PadY;
             Bottom += LineHeight + PadY;
 
-            sdl_DrawSoundBufferMarker(BackBuffer, SoundOutput, C, PadX, FirstTop, Bottom, ThisMarker->ExpectedFlipPlayCursor,  ExpectedFlipColor);
+            sdl_DrawSoundBufferMarker(BackBuffer, sound_output, C, PadX, FirstTop, Bottom, ThisMarker->expected_flip_play_cursor,  ExpectedFlipColor);
         }
 
-        sdl_DrawSoundBufferMarker(BackBuffer, SoundOutput, C, PadX, Top, Bottom, ThisMarker->FlipPlayCursor,  PlayColor);
-        sdl_DrawSoundBufferMarker(BackBuffer, SoundOutput, C, PadX, Top, Bottom, ThisMarker->FlipPlayCursor + 480*SoundOutput->bytes_per_sample,  PlayWindowColor);
-        sdl_DrawSoundBufferMarker(BackBuffer, SoundOutput, C, PadX, Top, Bottom, ThisMarker->FlipWriteCursor,  WriteColor);
+        sdl_DrawSoundBufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->flip_play_cursor,  PlayColor);
+        sdl_DrawSoundBufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->flip_play_cursor + 480*sound_output->bytes_per_sample,  PlayWindowColor);
+        sdl_DrawSoundBufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->flip_write_cursor,  WriteColor);
     }
 }
 #endif
@@ -1014,6 +1014,8 @@ main (void)
 
     struct sdl_performance_counters perf = {};
     perf.game_update_hz = sdl_GetWindowRefreshRate(window);
+    // Crashes when 1...
+    // perf.game_update_hz = 1;
     perf.target_seconds_per_frame = 1.0f/(f64)(perf.game_update_hz);
 
     SDL_Log("Refresh rate is %d Hz\n", perf.game_update_hz);
@@ -1085,7 +1087,7 @@ main (void)
 #if DEBUG
     int debug_time_marker_index = 0;
     int time_marker_count = perf.game_update_hz/2;
-    struct sdl_debug_time_marker *debug_time_markers = calloc((size_t)(TimeMarkerCount), sizeof(*DebugTimeMarkers));
+    struct sdl_debug_time_marker *debug_time_markers = calloc((size_t)(time_marker_count), sizeof(*debug_time_markers));
 #endif
 
     /* Game Performance initialization */
@@ -1149,12 +1151,13 @@ main (void)
             GameGetSoundSamples(&game_memory, &sound_buffer);
 
 #if DEBUG
-            struct sdl_debug_time_marker *Marker = &DebugTimeMarkers[DebugTimeMarkerIndex];
-            Marker->OutputPlayCursor = GlobalAudioRingBuffer.PlayCursor;
-            Marker->OutputWriteCursor = GlobalAudioRingBuffer.WriteCursor;
-            Marker->OutputLocation = byte_to_lock;
-            Marker->OutputByteCount = bytes_to_write;
-            Marker->ExpectedFlipPlayCursor = audio_perf.ExpectedFrameBoundaryByte;
+            struct sdl_debug_time_marker *Marker = &debug_time_markers[debug_time_marker_index];
+            Marker->output_play_cursor = GlobalAudioRingBuffer.play_cursor;
+            Marker->output_write_cursor = GlobalAudioRingBuffer.write_cursor;
+            Marker->output_location = byte_to_lock;
+            Marker->output_byte_count  = bytes_to_write;
+            Marker->expected_flip_play_cursor  = audio_perf.expected_frame_boundary_byte;
+
 #endif
 
 #if 0
@@ -1192,8 +1195,8 @@ main (void)
 
 #if DEBUG
             sdl_DebugSyncDisplay(&GlobalBackBuffer,
-                    TimeMarkerCount, DebugTimeMarkers, DebugTimeMarkerIndex - 1,
-                    &sound_output, perf.TargetSecondsPerFrame);
+                    time_marker_count, debug_time_markers, debug_time_marker_index - 1,
+                    &sound_output, perf.target_seconds_per_frame);
 #endif
 
             sdl_UpdateWindow(window, &GlobalBackBuffer);
@@ -1201,10 +1204,10 @@ main (void)
             audio_perf.flip_wall_clock = SDL_GetPerformanceCounter();
 
 #if DEBUG
-            // TODO: Assert(DebugTimeMarkerIndex < ArrayCount(DebugTimeMarkers));
-            struct sdl_debug_time_marker *ptrmarker = DebugTimeMarkers + DebugTimeMarkerIndex;
-            ptrmarker->FlipPlayCursor = GlobalAudioRingBuffer.PlayCursor;
-            ptrmarker->FlipWriteCursor = GlobalAudioRingBuffer.WriteCursor;
+            // TODO: Assert(debug_time_marker_index < ArrayCount(debug_time_markers));
+            struct sdl_debug_time_marker *ptrmarker = debug_time_markers + debug_time_marker_index;
+            ptrmarker->flip_play_cursor = GlobalAudioRingBuffer.play_cursor;
+            ptrmarker->flip_write_cursor = GlobalAudioRingBuffer.write_cursor;
 #endif
 
             /* Eval frame rate */
@@ -1221,8 +1224,8 @@ main (void)
 #endif
 
 #if DEBUG
-            ++DebugTimeMarkerIndex;
-            DebugTimeMarkerIndex %= TimeMarkerCount;
+            ++debug_time_marker_index;
+            debug_time_marker_index %= time_marker_count;
 #endif
         }
     }
@@ -1230,7 +1233,7 @@ main (void)
     exitval = EXIT_SUCCESS;
 __EXIT__:
 #if DEBUG
-    free(DebugTimeMarkers);
+    free(debug_time_markers);
 #endif
     if (sound_output.audio_device > 0) {
         munmap(GlobalAudioRingBuffer.data, sound_output.secondary_buffer_size);

@@ -155,9 +155,9 @@ struct debug_read_file_result
     void *contents;
 };
 
-internal struct debug_read_file_result DEBUGPlataformReadEntireFile(const char *filename);
-internal void DEBUGPlataformFreeFileMemory(void *Memory);
-internal bool DEBUGPlataformWriteEntireFile(const char *Filename, u32 MemorySize, void *Memory);
+internal struct debug_read_file_result DEBUG_plataform_read_entire_file (const char *filename);
+internal void DEBUG_plataform_free_file_memory(void *Memory);
+internal bool DEBUG_plataform_write_entire_file(const char *Filename, size_t MemorySize, void *Memory);
 #endif
 
 

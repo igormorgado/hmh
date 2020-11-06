@@ -88,11 +88,11 @@ GameUpdateAndRender(struct game_memory *Memory,
 
 #if DEBUG
         const char *Filename = __FILE__;
-        struct debug_read_file_result File = DEBUGPlataformReadEntireFile(Filename);
+        struct debug_read_file_result File = DEBUG_plataform_read_entire_file(Filename);
         if(File.contents)
         {
-            DEBUGPlataformWriteEntireFile("test.out", File.contents_size, File.contents);
-            DEBUGPlataformFreeFileMemory(File.contents);
+            DEBUG_plataform_write_entire_file("test.out", File.contents_size, File.contents);
+            DEBUG_plataform_free_file_memory(File.contents);
         }
 #endif
         GameState->ToneHz = 256.0f;
