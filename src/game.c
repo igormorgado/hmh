@@ -2,13 +2,6 @@
 
 #include "sdl_game.h"
 
-internal inline u32
-safe_truncate_u64(u64 Value)
-{
-    /* TODO: Assert (value <= 0xFFFFFFFF) */
-    u32 Result = (u32)Value;
-    return Result;
-}
 
 internal i32
 GameOutputSound(struct game_sound_output_buffer *SoundBuffer, f32 ToneHz)
@@ -21,10 +14,9 @@ GameOutputSound(struct game_sound_output_buffer *SoundBuffer, f32 ToneHz)
     for(size_t i = 0; i < SoundBuffer->sample_count; ++i)
     {
         f32 sine_value = sinf(tSine);
-        i16 sample_value = (i16)(roundf(sine_value * amplitude));
+        i16 sample_value = (i16)(sine_value * amplitude);
         *sample_out++ = sample_value;
         *sample_out++ = sample_value;
-        // tSine += TAU / wave_period;
         tSine += 2.0f * PI * 1.0f / (f32)wave_period;
         if(tSine > 2.0f * PI) tSine -= 2.0f * PI;
     }
@@ -32,17 +24,17 @@ GameOutputSound(struct game_sound_output_buffer *SoundBuffer, f32 ToneHz)
 }
 
 internal i32
-RenderWeirdGradient (struct game_offscreen_buffer *ScreenBuffer,
+RenderWeirdGradient (struct game_offscreen_buffer *screen_buffer,
                      i16 BlueOffset, i16 GreenOffset, i16 RedOffset)
 {
 
     // TODO: ASSERT WINDOW NOT NULL
     // TODO: ASSERT 0 < BlueOffset GREEN OFFSET < 255
-    u8 *row = (u8 *)ScreenBuffer->Memory;
-    for(int y = 0; y < ScreenBuffer->Height; ++y)
+    u8 *row = (u8 *)screen_buffer->Memory;
+    for(int y = 0; y < screen_buffer->Height; ++y)
     {
         u32 *pixel = (u32*)row;
-        for(int x = 0; x < ScreenBuffer->Width; ++x)
+        for(int x = 0; x < screen_buffer->Width; ++x)
         {
             u8 blue = (x + BlueOffset);
             u8 green = (y + GreenOffset);
@@ -51,7 +43,7 @@ RenderWeirdGradient (struct game_offscreen_buffer *ScreenBuffer,
                         (green << 8) |
                         (blue << 0));
         }
-        row += ScreenBuffer->Pitch;
+        row += screen_buffer->Pitch;
     }
     return RETURN_SUCCESS;
 }
@@ -71,35 +63,36 @@ CreateGameState(void)
 }
 
 
+/* Renderer entry point */
 internal void
-GameUpdateAndRender(struct game_memory *Memory,
-                    struct game_input *Input,
-                    struct game_offscreen_buffer *ScreenBuffer)
+game_update_and_render(struct game_memory *memory,
+                    struct game_input *input,
+                    struct game_offscreen_buffer *screen_buffer)
 {
     /* TODO: Assert(sizeof(struct GameState) <= Memory->permanent_storageSize)
      * Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) ==
      *      (ArrayCount(Input->Controllers[0].Buttons)));
      */
 
-    struct game_state *GameState = (struct game_state *)Memory->permanent_storage;
+    struct game_state *game_state = (struct game_state *)memory->permanent_storage;
 
-    if(!Memory->is_initialized)
+    if(!memory->is_initialized)
     {
 
 #if DEBUG
-        const char *Filename = __FILE__;
-        struct debug_read_file_result File = DEBUG_plataform_read_entire_file(Filename);
-        if(File.contents)
+        const char *filename = __FILE__;
+        struct debug_read_file_result File = debug_plataform_read_entire_file(filename);
+        if(file.contents)
         {
-            DEBUG_plataform_write_entire_file("test.out", File.contents_size, File.contents);
-            DEBUG_plataform_free_file_memory(File.contents);
+            debug_plataform_write_entire_file("test.out", file.contents_size, file.contents);
+            debug_plataform_free_file_memory(file.contents);
         }
 #endif
-        GameState->ToneHz = 256.0f;
-        Memory->is_initialized = true;
+        game_state->tone_hz = 512.0f;
+        memory->is_initialized = true;
     }
 
-    for(size_t i = 0; i < ArrayCount(Input->Controllers); ++i)
+    for(size_t i = 0; i < ArrayCount(input->controllers); ++i)
     {
         struct game_controller_input *Controller = GetController(Input, i);
         if(Controller->IsAnalog)
@@ -131,9 +124,10 @@ GameUpdateAndRender(struct game_memory *Memory,
         }
     }
     // GameOutputSound(SoundBuffer, GameState->ToneHz);
-    RenderWeirdGradient(ScreenBuffer, GameState->BlueOffset, GameState->GreenOffset, GameState->RedOffset);
+    RenderWeirdGradient(screen_buffer, GameState->BlueOffset, GameState->GreenOffset, GameState->RedOffset);
 }
 
+/* Sound entry point */
 internal void
 GameGetSoundSamples(struct game_memory *Memory,
                     struct game_sound_output_buffer *SoundBuffer)
