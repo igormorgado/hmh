@@ -18,10 +18,6 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
-#if 0
-#include <math.h>
-#endif
-
 /*
  * Plataform dependant code
  */
@@ -62,7 +58,7 @@ struct sdl_sound_output
 #if GAME_INTERNAL
 struct sdl_debug_time_marker
 {
-    size_t queued_audio_butees;
+    size_t queued_audio_bytes;
     size_t output_byte_count;
     size_t expected_bytes_until_flip;
 };
@@ -96,10 +92,10 @@ struct sdl_state
     int recording_handle;
     size_t input_recording_index;
 
-    int playback_handle;
-    size_t input_playback_index;
+    int playing_handle;
+    size_t input_playing_index;
 
-    char *exe_filename[SDL_STATE_FILE_NAME_MAX_SIZE];
+    char exe_filename[SDL_STATE_FILE_NAME_MAX_SIZE];
     char *exe_basename;
 
 };
@@ -116,8 +112,9 @@ struct sdl_performance_counters
     u64 end_cycle_count;
     f32 seconds_elapsed_for_frame;
     u64 cycles_elapsed;
-    f64 fps;                /* Frames per second */
-    f64 mcpf;               /* cycles per frame */
+    f32 fps;                /* Frames per second */
+    f32 mcpf;               /* cycles per frame */
+    f32 ms_per_frame;
 };
 
 struct sdl_audio_counters

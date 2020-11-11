@@ -133,6 +133,9 @@ typedef real64            f64;
  * Mathematical constants and types
  */
 
+/* sinf */
+#include <math.h>
+
 #define PI          3.14159265358979323846f  /* pi */
 #define PI_2        1.57079632679489661923f  /* pi/2 */
 #define PI_4        0.78539816339744830962f  /* pi/4 */
@@ -169,10 +172,10 @@ enum RETURN_STATUS
 
 #define ArrayCount(array) (sizeof((array)) / sizeof((array)[0]))
 
-#define AlignPow2(Value, Alignment) ((Value + ((Alignment) - 1)) & ~((Alignment) - 1))
-#define Align4(Value) ((Value + 3) & ~3)
-#define Align8(Value) ((Value + 7) & ~7)
-#define Align16(Value) ((Value + 15) & ~15)
+#define AlignPow2(Value, Alignment) (((Value) + ((Alignment) - 1)) & ~((Alignment) - 1))
+#define Align4(value)  (((value) +  3) &  ~3)
+#define Align8(value)  (((value) +  7) &  ~7)
+#define Align16(value) (((value) + 15) & ~15)
 
 inline u32
 safe_truncate_u64(u64 value)
@@ -268,6 +271,7 @@ struct game_offscreen_buffer
     int width;
     int height;
     int pitch;
+    int bytes_per_pixel;
 };
 
 struct game_sound_output_buffer
@@ -321,11 +325,11 @@ struct game_controller_input
 };
 
 #define MAX_CONTROLLERS 4
-#define MAX_INPUT MAX_CONTROLLERS + 1
+#define MAX_INPUT_DEVICES MAX_CONTROLLERS + 1
 #define CONTROLLER_AXIS_LEFT_DEADZONE 7849
 struct game_input
 {
-    struct game_button_state mouse_buttons[MAX_INPUT];
+    struct game_button_state mouse_buttons[MAX_INPUT_DEVICES];
     i32 mouse_x;
     i32 mouse_y;
     i32 mouse_z;
@@ -338,7 +342,7 @@ struct game_input
     /* This is most related to performance counters or game timings...  */
     f32 dt_for_frame;
 
-    struct game_controller_input controllers[MAX_INPUT];
+    struct game_controller_input controllers[MAX_INPUT_DEVICES];
 };
 
 #if 0    /* NOT YET ON HMH: only at day 151 */
@@ -427,6 +431,8 @@ struct game_memory
 
 };
 
+#if !defined(CASEYDEFS)
+/* HERE */
 typedef void game_update_and_render (struct game_memory              *memory,
                                      struct game_input               *input,
                                      struct game_offscreen_buffer    *screen_buffer);
@@ -434,6 +440,13 @@ typedef void game_update_and_render (struct game_memory              *memory,
 /* This function must be very fast. no more than 1ms */
 typedef void game_get_sound_samples (struct game_memory              *memory,
                                      struct game_sound_output_buffer *sound_buffer);
+#else
+#define GAME_UPDATE_AND_RENDER(name) void name(struct game_memory *memory, struct game_input *input, struct game_offscreen_buffer *screen_buffer)
+typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
+
+#define GAME_GET_SOUND_SAMPLES(name) void name(struct game_memory *memory, struct game_sound_output_buffer *sound_buffer)
+typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
+#endif
 
 inline struct game_controller_input *
 get_controller(struct game_input *input, uint controller_index)

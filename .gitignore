@@ -8,3 +8,5 @@ local/
 src/hmh
 .gdb_history
 test.out
+game.so
+game.*
