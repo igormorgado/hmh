@@ -215,9 +215,23 @@ sdl_load_game_code(char *source_dll_name)
 #if !defined(CASEYDEFS)
             result.update_and_render = (game_update_and_render *)
                 dlsym (result.game_code_dll, "game_update_and_render_f");
+            if(!result.update_and_render)
+            {
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                        "%s: %s\n",
+                        __func__,
+                        dlerror());
+            }
 
             result.get_sound_samples = (game_get_sound_samples *)
                 dlsym (result.game_code_dll, "game_get_sound_samples_f");
+            if(!result.update_and_render)
+            {
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                        "%s: %s\n",
+                        __func__,
+                        dlerror());
+            }
 #else
             result.update_and_render = (game_update_and_render *)
                 dlsym (result.game_code_dll, "GameUpdateAndRender");
@@ -245,10 +259,8 @@ sdl_load_game_code(char *source_dll_name)
     else
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "%s: %s fail to reload dlerror: %s\n",
-                __func__,
-                source_dll_name,
-                dlerror());
+                "%s: Failed to load some libraries. Disabling them.\n",
+                __func__);
         result.update_and_render = 0;
         result.get_sound_samples = 0;
     }
@@ -1002,7 +1014,7 @@ sdl_eval_performance()
 }
 
 
-#if GAME_SLOW
+#if GAME_INTERNAL
 internal void
 sdl_debug_draw_vertical(struct sdl_offscreen_buffer *back_buffer,
                       int X,
@@ -1525,7 +1537,7 @@ main (void)
 
             sdl_wait_frame(&global_performance_counters);
 
-#if GAME_SLOW
+#if GAME_INTERNAL
             sdl_debug_sync_display(&global_back_buffer,
                     ArrayCount(debug_time_markers), debug_time_markers, debug_time_marker_index - 1,
                     &sound_output, &global_performance_counters);
