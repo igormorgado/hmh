@@ -102,6 +102,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     if(!memory->is_initialized)
     {
 
+#if GAME_INTERNAL
         const char *filename = __FILE__;
         struct debug_read_file_result file = debug_platform_read_entire_file(filename);
         if(file.contents)
@@ -109,6 +110,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             debug_platform_write_entire_file("test.out", file.contents_size, file.contents);
             debug_platform_free_file_memory(file.contents);
         }
+#endif
         game_state->tone_hz = 512.0f;
         game_state->amplitude = 3000;
         game_state->t_sine = 0.0f;
