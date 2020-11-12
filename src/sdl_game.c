@@ -21,14 +21,10 @@
 
 #include "game_platform.h"
 
-#if 0  /* Not anymore?:Plataform independant header/code */
-#include "game.h"
-#endif
-
 /* Plataform dependent header */
 #include "sdl_game.h"
 
-/* NOTE(Igor) Isn't this better on sdl_game.h ? */
+/* NOTE(imp) Isn't this better on sdl_game.h ? */
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
 #endif
@@ -46,6 +42,7 @@ global_variable SDL_GameController *controller_handles[MAX_CONTROLLERS];
 global_variable SDL_Haptic *rumble_handles[MAX_CONTROLLERS];
 
 
+
 internal void
 cat_strings(size_t src_a_sz, char *src_a,
             size_t src_b_sz, char *src_b,
@@ -60,16 +57,16 @@ cat_strings(size_t src_a_sz, char *src_a,
     *dst++ = 0;
 }
 
-/* TODO(Igor): Find a non linux only way to do it */
+/* TODO(imp): Find a non linux only way to do it */
 internal void
-sdl_get_exe_filename(struct sdl_state *state)
+sdl_get_exe_filepath(struct sdl_state *state)
 {
-    memset(state->exe_filename, 0, sizeof(state->exe_filename));
+    memset(state->exe_filepath, 0, sizeof(state->exe_filepath));
 
-    /* TODO(Igor): Why not get from argv[0]? */
-    ssize_t size_of_filename = readlink ("/proc/self/exe", state->exe_filename, sizeof (state->exe_filename) - 1);
-    state->exe_basename = state->exe_filename;
-    for(char *scan = state->exe_filename; *scan; ++scan)
+    /* TODO(imp): Why not get from argv[0]? */
+    ssize_t size_of_filepath = readlink ("/proc/self/exe", state->exe_filepath, sizeof (state->exe_filepath) - 1);
+    state->exe_basename = state->exe_filepath;
+    for(char *scan = state->exe_filepath; *scan; ++scan)
     {
         if(*scan == '/')
         {
@@ -87,13 +84,13 @@ string_length(char *string)
 }
 
 internal void
-sdl_build_exe_path_filename(struct sdl_state *state,
-                            char *filename,
-                            char *dst,
-                            int dst_sz)
+sdl_build_filepath(struct sdl_state *state,
+                   char *filename,
+                   char *dst,
+                   int dst_sz)
 {
-    /* Note(Igor): Hackish stuff: char a[] = "..."; char *b = &a[X]; ==> b - a = X */
-    cat_strings(state->exe_basename - state->exe_filename, state->exe_filename,
+    /* Note(imp): Hackish stuff: char a[] = "..."; char *b = &a[X]; ==> b - a = X */
+    cat_strings(state->exe_basename - state->exe_filepath, state->exe_filepath,
                 string_length(filename), filename,
                 dst_sz, dst);
 }
@@ -185,7 +182,7 @@ debug_plataform_write_entire_file(const char *filename, size_t memory_size, void
 #endif
 
 
-/* Note(Igor): This function should be name get_filename_write_time */
+/* Note(imp): This function should be name get_filename_write_time */
 inline time_t
 sdl_get_last_write_time(char *filename)
 {
@@ -208,13 +205,13 @@ sdl_load_game_code(char *source_dll_name)
     if (result.dll_last_write_time)
     {
         SDL_Log("%s: %s reloading\n", __FILE__, source_dll_name);
-        /* TODO(Igor): Use SDL dynamic loading */
+        /* TODO(imp): Use SDL dynamic loading */
         result.game_code_dll = dlopen(source_dll_name, RTLD_LAZY);
         if (result.game_code_dll)
         {
-#if !defined(CASEYDEFS)
             result.update_and_render = (game_update_and_render *)
                 dlsym (result.game_code_dll, "game_update_and_render_f");
+
             if(!result.update_and_render)
             {
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
@@ -225,6 +222,7 @@ sdl_load_game_code(char *source_dll_name)
 
             result.get_sound_samples = (game_get_sound_samples *)
                 dlsym (result.game_code_dll, "game_get_sound_samples_f");
+
             if(!result.update_and_render)
             {
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
@@ -232,21 +230,13 @@ sdl_load_game_code(char *source_dll_name)
                         __func__,
                         dlerror());
             }
-#else
-            result.update_and_render = (game_update_and_render *)
-                dlsym (result.game_code_dll, "GameUpdateAndRender");
-
-            result.get_sound_samples = (game_get_sound_samples *)
-                dlsym (result.game_code_dll, "GameGetSoundSamples");
-#endif
-
             result.is_valid = (result.update_and_render &&
                     result.get_sound_samples);
 
         }
         else
         {
-            /* TODO(Igor): Use SDL_LogError */
+            /* TODO(imp): Use SDL_LogError */
         }
     }
 
@@ -283,7 +273,6 @@ sdl_unload_game_code(struct sdl_game_code *game_code)
     game_code->get_sound_samples = 0;
 }
 
-/* Original name: SDLOpenGameControllers() */
 internal void
 sdl_game_controllers_open()
 {
@@ -312,7 +301,6 @@ sdl_game_controllers_open()
 }
 
 
-/* Original: SDLcloseGameControllers */
 internal void
 sdl_game_controllers_close()
 {
@@ -556,13 +544,13 @@ sdl_get_input_file_location(struct sdl_state *state,
 {
     char tmp[64];
     sprintf(tmp, "loop_edit_%d_%s.hmi", slot_index, input_stream ? "input" : "state");
-    sdl_build_exe_path_filename(state, tmp, dst, dst_count);
+    sdl_build_filepath(state, tmp, dst, dst_count);
 }
 
 internal struct sdl_replay_buffer *
 sdl_get_replay_buffer(struct sdl_state *state, uint index)
 {
-    /* TODO(Igor): Use sdl assertions */
+    /* TODO(imp): Use sdl assertions */
     Assert(index > 0);
     Assert(index < ArrayCount(state->replay_buffers));
     struct sdl_replay_buffer *result = &state->replay_buffers[index];
@@ -571,7 +559,7 @@ sdl_get_replay_buffer(struct sdl_state *state, uint index)
 
 
 internal void
-sdl_begin_recording_input(struct sdl_state *state, int input_recording_index)
+sdl_begin_input_recording(struct sdl_state *state, int input_recording_index)
 {
     struct sdl_replay_buffer *replay_buffer = sdl_get_replay_buffer(state, input_recording_index);
 
@@ -584,16 +572,14 @@ sdl_begin_recording_input(struct sdl_state *state, int input_recording_index)
         state->recording_handle = open(filename,
                                        O_WRONLY | O_CREAT | O_TRUNC,
                                        S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-#if 0
-        lseek(state->recording_handle, state->total_size, SEEK_SET);
-#endif
+        // FAILS HERE
         memcpy(replay_buffer->memory_block, state->game_memory_block, state->total_size);
     }
 }
 
 
 internal void
-sdl_end_recording(struct sdl_state *state)
+sdl_end_input_recording(struct sdl_state *state)
 {
     close(state->recording_handle);
     state->input_recording_index = 0;
@@ -730,7 +716,6 @@ sdl_process_pending_events(struct sdl_state *state,
                     {
                         sdl_process_keyboard_event(&keyboard_controller->start, is_down);
                     }
-#if 0
 #if GAME_INTERNAL
                     else if(key_code == SDLK_p)
                     {
@@ -745,19 +730,36 @@ sdl_process_pending_events(struct sdl_state *state,
                         {
                             if(state->input_playing_index == 0)
                             {
+                                /* If not playing */
                                 if(state->input_recording_index == 0)
                                 {
-                                    sdl_begin_recording_input (state, 1);
+                                    /* Start recording */
+                                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                                            "%s: START: Recording state %d\n",
+                                            __func__, 1);
+                                    sdl_begin_input_recording (state, 1);
                                 }
                                 else
                                 {
-                                    sdl_end_recording_input (state, 1)
+                                    /* Stop recording and start playing */
+                                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                                            "%s: END  : Recording state %d\n",
+                                            __func__, 1);
+                                    sdl_end_input_recording (state);
+
+                                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                                            "%s: Start  : Playback state %d\n",
+                                            __func__, 1);
+                                    sdl_begin_input_playback (state, 1);
                                 }
-                                global_pause = !global_pause;
+                            }
+                            else
+                            {
+                                /* Since is playing, stop it */
+                                sdl_end_input_playback(state);
                             }
                         }
                     }
-#endif
 #endif
                     else if(key_code == SDLK_x)
                     {
@@ -792,33 +794,44 @@ sdl_process_pending_events(struct sdl_state *state,
                         {
                             SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
                             SDL_Renderer *renderer = SDL_GetRenderer(window);
-                            SDL_Log("%s: Window size changed (%d, %d)\n",
+                            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                                         "%s: Window size changed (%d, %d)\n",
                                     __func__, event.window.data1, event.window.data2);
                         } break;
 
                     case SDL_WINDOWEVENT_FOCUS_GAINED:
                         {
-                            SDL_Log("%s: Window focus gained\n", __func__);
+                            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                                         "%s: Window focus gained\n",
+                                         __func__);
                         } break;
 
                     case SDL_WINDOWEVENT_FOCUS_LOST:
                         {
-                            SDL_Log("%s: Window focus lost\n", __func__);
+                            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                                         "%s: Window focus lost\n",
+                                         __func__);
                         } break;
 
                     case SDL_WINDOWEVENT_ENTER:
                         {
-                            SDL_Log("%s: Mouse focus gained\n", __func__);
+                            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                                         "%s: Mouse focus gained\n",
+                                         __func__);
                         } break;
 
                     case SDL_WINDOWEVENT_LEAVE:
                         {
-                            SDL_Log("%s: Mouse focus lost\n", __func__);
+                            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                                         "%s: Mouse focus lost\n",
+                                         __func__);
                         } break;
 
                     case SDL_WINDOWEVENT_EXPOSED:
                         {
-                            SDL_Log("%s: Window exposed\n", __func__);
+                            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                                         "%s: Window exposed\n",
+                                         __func__);
                             SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
                             struct sdl_window_dimension dimension = sdl_window_get_dimension(window);
                             sdl_display_buffer_in_window (&global_back_buffer, window, dimension.width, dimension.height);
@@ -826,7 +839,9 @@ sdl_process_pending_events(struct sdl_state *state,
 
                     case SDL_WINDOWEVENT_CLOSE:
                         {
-                            SDL_Log("%s: Window Close requested\n", __func__);
+                            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                                         "%s: Window Close requested\n",
+                                         __func__);
                             //return RETURN_EXIT;
                         } break;
 
@@ -838,7 +853,9 @@ sdl_process_pending_events(struct sdl_state *state,
 
                     default:
                         {
-                            SDL_Log("%s: Window event not handled: %d\n", __func__, event.window.event);
+                            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                                         "%s: Window event not handled: %d\n",
+                                         __func__, event.window.event);
                         } break;
                 } /* switch (window.event.type) */
             } break; /* case SDL_WINDOWEVENT */
@@ -867,7 +884,7 @@ sdl_handle_debug_cycle_counters(struct game_memory *memory)
 #if GAME_INTERNAL
     SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
                  "%s: Cycle counts: \n", __func__);
-    /* TODO(Igor): why not use DEBUG_CC_COUNT enum value? */
+    /* TODO(imp): why not use DEBUG_CC_COUNT enum value? */
     for(size_t counter_index = 0; counter_index < ArrayCount(memory->counters); ++counter_index)
     {
         struct debug_cycle_counter *counter = memory->counters + counter_index;
@@ -1119,6 +1136,7 @@ sdl_debug_sync_display(struct sdl_offscreen_buffer *back_buffer,
 int
 main (void)
 {
+    i16 *sound_samples = 0;
     global_running = true;
     int exitval = EXIT_FAILURE;
     int retval = RETURN_SUCCESS;
@@ -1133,13 +1151,13 @@ main (void)
      * Game states
      */
     struct sdl_state sdl_state = {0};
-    sdl_get_exe_filename(&sdl_state);
-    char source_game_code_dll_full_path[SDL_STATE_FILE_NAME_MAX_SIZE];
-    sdl_build_exe_path_filename (&sdl_state,
-                                 "game.so",
-                                 source_game_code_dll_full_path,
-                                 sizeof(source_game_code_dll_full_path));
-    struct sdl_game_code game = sdl_load_game_code(source_game_code_dll_full_path);
+    sdl_get_exe_filepath(&sdl_state);
+    char game_code_dll_fullpath[SDL_STATE_FILE_NAME_MAX_SIZE];
+    sdl_build_filepath (&sdl_state,
+                        "game.so",
+                        game_code_dll_fullpath,
+                        sizeof(game_code_dll_fullpath));
+    struct sdl_game_code game = sdl_load_game_code(game_code_dll_fullpath);
 
 
     /*
@@ -1176,41 +1194,15 @@ main (void)
                                       (f32)sound_output.bytes_per_sample);
     sdl_init_audio(&sound_output);
 
-#if 0 /* Test audio */
-    /* Move it to an external function ? */
-    i16 test_samples[4800] = {0}
-    u64 last_counter = 0;
-    while(global_running)
-    {
-        u32 queued_audio_bytes = SDL_GetQueuedAudioSize(sound_output->audio_device);
-        if(!queued_audio_bytes)
-        {
-            u64 new_counter = sdl_get_wall_clock();
-            i32 test_samples_sz = ArrayCount(test_samples);
-
-            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
-                         "%s: %lu samples in %f time\n",
-                         __func__,
-                         test_samples_sz,
-                         sdl_get_seconds_elapsed(last_counter, new_counter));
-
-            SDL_QueueAudio(sount_output->audio_device,
-                           test_samples,
-                           test_samples_sz);
-
-            last_counter = new_counter;
-        }
-    }
-#endif
-
     u32 max_possible_overrun = 8;
-    i16 *sound_samples = (i16 *)calloc(sound_output.samples_per_second + max_possible_overrun, sound_output.bytes_per_sample);
+    /* NOTE(imp): Why not mmap? */
+    sound_samples = (i16 *)calloc(sound_output.samples_per_second + max_possible_overrun, sound_output.bytes_per_sample);
 
     /*
      * Game Memory Initialization
      */
 #if GAME_INTERNAL
-    void *base_address = (void*)Terabytes(2);
+    void *base_address = (void*)Terabytes(1);
 #else
     void *base_address = (void*)(0);
 #endif
@@ -1232,37 +1224,52 @@ main (void)
     game_memory.permanent_storage = sdl_state.game_memory_block;
     game_memory.transient_storage = (u8 *)game_memory.permanent_storage + game_memory.permanent_storage_size;
 
+    /* NOTE(imp): Zeroing memory, just because */
+    memset(game_memory.permanent_storage, 0, game_memory.permanent_storage_size);
+    memset(game_memory.transient_storage, 0, game_memory.transient_storage_size);
+
 
     /*
      * Debug replay buffer
      */
-    /*
-     * TODO(Igor): Use REPLAY_BUFFERS_MAX istead ArrayCount?
-     * maybe not, because this is callet once, hence not so expensive
-     */
-    for (size_t replay_index = 1; replay_index < ArrayCount(sdl_state.replay_buffers); ++replay_index)
+    //for (size_t replay_index = 1; replay_index < ArrayCount(sdl_state.replay_buffers); ++replay_index)
+    for (size_t replay_index = 1; replay_index < REPLAY_BUFFERS_MAX; ++replay_index)
     {
         struct sdl_replay_buffer *replay_buffer = &sdl_state.replay_buffers[replay_index];
 
         sdl_get_input_file_location(&sdl_state, false, replay_index, sizeof(replay_buffer->filename), replay_buffer->filename);
 
-        replay_buffer->file_handle = open(replay_buffer->filename, O_RDWR | O_CREAT, S_IRUSR | S_IRGRP | S_IROTH);
-
-        ftruncate(replay_buffer->file_handle, sdl_state.total_size);
-
-        replay_buffer->memory_block = mmap(0,
-                                           sdl_state.total_size,
-                                           PROT_READ | PROT_WRITE,
-                                           MAP_PRIVATE,
-                                           replay_buffer->file_handle,
-                                           0);
-
-        if(replay_buffer->memory_block)
+        replay_buffer->file_handle = open(replay_buffer->filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+        int errnum = errno;
+        if(replay_buffer->file_handle < 0)
         {
-            /* we got mmaped file */
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                    "%s: open(%s [%zu]): failed with %s\n",
+                    __func__, replay_buffer->filename, replay_index, strerror(errnum));
         }
         else
         {
+            ftruncate(replay_buffer->file_handle, sdl_state.total_size);
+
+            replay_buffer->memory_block = mmap(0,
+                                            sdl_state.total_size,
+                                            PROT_READ | PROT_WRITE,
+                                            MAP_PRIVATE,
+                                            replay_buffer->file_handle,
+                                            0);
+        }
+
+        if(replay_buffer->memory_block)
+        {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "%s: mmap(replay_buffer[%zu]: mapped to %s\n",
+                    __func__, replay_index, replay_buffer->filename);
+        }
+        else
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                    "%s: mmap(replay_buffer[%zu]: Cound not map file handle in memory\n",
+                    __func__, replay_index);
             /* TODO: wedont... diagnose it... */
         }
     }
@@ -1295,10 +1302,6 @@ main (void)
     struct sdl_debug_time_marker debug_time_markers[TIME_MARKER_MAX] = {0};
 #endif
 
-#if 0 /* Remove if everything goes fine */
-    struct sdl_game_code game = sdl_load_game_code(source_game_code_dll_full_path);
-#endif
-
     /*
      * MAIN LOOP
      */
@@ -1306,11 +1309,11 @@ main (void)
     {
         new_input->dt_for_frame = global_performance_counters.target_seconds_per_frame;
         new_input->executable_reloaded = false;
-        time_t dll_write_time = sdl_get_last_write_time(source_game_code_dll_full_path);
+        time_t dll_write_time = sdl_get_last_write_time(game_code_dll_fullpath);
         if(dll_write_time != game.dll_last_write_time)
         {
             sdl_unload_game_code(&game);
-            game = sdl_load_game_code(source_game_code_dll_full_path);
+            game = sdl_load_game_code(game_code_dll_fullpath);
             new_input->executable_reloaded = true;
         }
 
@@ -1445,14 +1448,11 @@ main (void)
             } /* loop controllers */
 
             struct game_offscreen_buffer screen_buffer = {0};
-            // screen_buffer.memory = (u8*)global_back_buffer.memory +
-            //                        global_back_buffer.width *
-            //                        (global_back_buffer.height - 1) *
-            //                        global_back_buffer.bytes_per_pixel;
-            screen_buffer.memory = global_back_buffer.memory;
-            screen_buffer.width  = global_back_buffer.width;
-            screen_buffer.height = global_back_buffer.height;
-            screen_buffer.pitch  = global_back_buffer.pitch;
+            screen_buffer.memory           = global_back_buffer.memory;
+            screen_buffer.width            = global_back_buffer.width;
+            screen_buffer.height           = global_back_buffer.height;
+            screen_buffer.pitch            = global_back_buffer.pitch;
+            screen_buffer.bytes_per_pixel  = global_back_buffer.bytes_per_pixel;
 
             if (sdl_state.input_recording_index)
             {
@@ -1471,10 +1471,9 @@ main (void)
 
             /*
              * Audio "render"
-             * TODO(Igor): Move to an external function, maybe inside game
-             * TODO(Igor): Reorganize this mess...
+             * TODO(imp): Move to an external function, maybe inside game
+             * TODO(imp): Reorganize this mess...
              */
-
 
             global_audio_counters.queued_audio_bytes = SDL_GetQueuedAudioSize(sound_output.audio_device);
 
@@ -1524,7 +1523,7 @@ main (void)
                 (f32)sound_output.bytes_per_sample /
                 (f32)sound_output.samples_per_second;
 
-#if 0
+#if GAME_SLOW
             SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
                     "BTW: %u - Latency: %d (%fs)\n",
                     bytes_to_write,
@@ -1542,6 +1541,10 @@ main (void)
                     ArrayCount(debug_time_markers), debug_time_markers, debug_time_marker_index - 1,
                     &sound_output, &global_performance_counters);
 #endif
+            struct sdl_window_dimension dimension = sdl_window_get_dimension(window);
+            sdl_display_buffer_in_window(&global_back_buffer, window,
+                    dimension.width, dimension.height);
+
 
             struct game_input *tmp_input = new_input;
             new_input = old_input;
@@ -1572,12 +1575,10 @@ main (void)
 __EXIT__:
     SDL_Log ("Exiting\n");
     /* Why gcc is returning error about unitialized ? */
-#if 0
     if(sound_samples)
     {
         free(sound_samples);
     }
-#endif
 
     if(sdl_state.game_memory_block)
         munmap(sdl_state.game_memory_block, sdl_state.total_size);
@@ -1606,579 +1607,3 @@ __EXIT__:
     return exitval;
 
 } /* main() */
-
-
-
-
-
-
-/*
- *
- * ABANDONED
- *
- *
- */
-
-
-
-#if 0 /* CODE NOT USED ANYMORE */
-
-#if 0
-
-
-#if 0
-            char FPSBuffer[256];
-            snprintf (FPSBuffer, sizeof(FPSBuffer),
-                      "%6.02fms/f, %6.02ff/s %6.02fmc/f\n",
-                      perf.ms_per_frame,
-                      perf.fps,
-                      perf.mcpf);
-            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "%s", FPSBuffer);
-#endif
-
-#if DEBUG
-            ++debug_time_marker_index;
-            debug_time_marker_index %= time_marker_count;
-#endif
-        }
-    }
-
-    exitval = EXIT_SUCCESS;
-#endif
-
-
-
-#if 0  /* REDO LATER */
-
-void
-sdl_HandleController(struct game_input *new_input, struct game_input *old_input)
-{
-    for(int i = 0; i< MAX_CONTROLLERS; i++)
-    {
-        if(controller_handles[i] != NULL && SDL_GameControllerGetAttached(controller_handles[i]))
-        {
-            /* Controllers start from 1, since 0 is the keyboard. Ugly. But ok */
-            struct game_controller_input * old_controller = get_controller(old_input, i + 1);
-            struct game_controller_input * new_controller = get_controller(new_input, i + 1);
-
-            new_controller->IsConnected = true;
-            new_controller->is_analog = true;
-
-            sdl_ProcessGameControllerButton(&(old_controller->Lshoulder),
-                                            &(new_controller->Lshoulder),
-                                            SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_LEFTSHOULDER));
-
-            sdl_ProcessGameControllerButton(&(old_controller->Rshoulder),
-                                            &(new_controller->Rshoulder),
-                                            SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_RIGHTSHOULDER));
-
-            sdl_ProcessGameControllerButton(&(old_controller->ActionDown),
-                                            &(new_controller->ActionDown),
-                                            SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_A));
-
-            sdl_ProcessGameControllerButton(&(old_controller->ActionRight),
-                                            &(new_controller->ActionRight),
-                                            SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_B));
-
-            sdl_ProcessGameControllerButton(&(old_controller->ActionLeft),
-                                            &(new_controller->ActionLeft),
-                                            SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_X));
-
-            sdl_ProcessGameControllerButton(&(old_controller->ActionUp),
-                                            &(new_controller->ActionUp),
-                                            SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_Y));
-
-            sdl_ProcessGameControllerButton(&(old_controller->Back),
-                                            &(new_controller->Back),
-                                            SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_BACK));
-
-            sdl_ProcessGameControllerButton(&(old_controller->Start),
-                                            &(new_controller->Start),
-                                            SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_START));
-
-            new_controller->StickAverageX  = sdl_ProcessGameControllerAxisValue (
-                    SDL_GameControllerGetAxis (controller_handles[i], SDL_CONTROLLER_AXIS_LEFTX), 1);
-
-            new_controller->StickAverageY  = sdl_ProcessGameControllerAxisValue (
-                    SDL_GameControllerGetAxis (controller_handles[i], SDL_CONTROLLER_AXIS_LEFTY), 1);
-
-            /* Possible branchless with sum and or */
-            if((new_controller->StickAverageX != 0.0f) || (new_controller->StickAverageY != 0.0f))
-            {
-                new_controller->is_analog = true;
-            }
-
-            // if(new_controller->Start.EndedDown) GlobalPaused = !GlobalPaused;
-            if(SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_START))
-            {
-                GlobalPaused = !GlobalPaused;
-            }
-
-            if(SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_DPAD_UP))
-            {
-                new_controller->StickAverageY = 1.0f;
-                new_controller->is_analog = false;
-            }
-
-            if(SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_DPAD_DOWN))
-            {
-                new_controller->StickAverageY = -1.0f;
-                new_controller->is_analog = false;
-            }
-
-            if(SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_DPAD_LEFT))
-            {
-                new_controller->StickAverageX = -1.0f;
-                new_controller->is_analog = false;
-            }
-
-            if(SDL_GameControllerGetButton(controller_handles[i], SDL_CONTROLLER_BUTTON_DPAD_RIGHT))
-            {
-                new_controller->StickAverageX = 1.0f;
-                new_controller->is_analog = false;
-            }
-
-            f32 Threshold = 0.5f;
-            sdl_ProcessGameControllerButton(&(old_controller->MoveLeft),
-                                           &(new_controller->MoveLeft),
-                                           new_controller->StickAverageX < -Threshold);
-            sdl_ProcessGameControllerButton(&(old_controller->MoveRight),
-                                           &(new_controller->MoveRight),
-                                           new_controller->StickAverageX > Threshold);
-            sdl_ProcessGameControllerButton(&(old_controller->MoveUp),
-                                           &(new_controller->MoveUp),
-                                           new_controller->StickAverageY < -Threshold);
-            sdl_ProcessGameControllerButton(&(old_controller->MoveDown),
-                                           &(new_controller->MoveDown),
-                                           new_controller->StickAverageY > Threshold);
-        } else {
-            // TODO: Controller not plugged in (CLOSE IT!)
-        }
-    }
-    return;
-}
-
-internal int
-sdl_HandleQuit()
-{
-    return RETURN_EXIT;
-}
-
-internal int
-sdl_HandleEvent(struct game_input *input)
-{
-    int retval = RETURN_SUCCESS;
-
-    /* Easier naming */
-    struct game_input *new_input = &input[0];
-    struct game_input *old_input = &input[1];
-
-    /* Initialize and rotate keyboard events */
-    struct game_controller_input *keyboard_controller = get_controller(new_input,0);
-    struct game_controller_input *OldKeyboardController = get_controller(old_input,0);
-    memset(keyboard_controller, 0, sizeof(*keyboard_controller));
-    for(size_t i = 0; i < ArrayCount(keyboard_controller->Buttons); ++i)
-    {
-        keyboard_controller->Buttons[i].EndedDown =
-        OldKeyboardController->Buttons[i].EndedDown;
-    }
-
-    /* Pool SDL Event Queue */
-    SDL_Event event;
-    while(SDL_PollEvent(&event))
-    {
-        switch(event.type)
-        {
-            case SDL_QUIT:          retval = sdl_HandleQuit(); break;
-            case SDL_WINDOWEVENT:   retval = sdl_HandleWindow(event); break;
-            case SDL_KEYUP:         retval = sdl_HandleKey(event, keyboard_controller); break;
-            case SDL_KEYDOWN:       retval = sdl_HandleKey(event, keyboard_controller); break;
-            default: break;
-        }
-    }
-    /* TODO: Use SDL Event pool for Controllers */
-    sdl_HandleController(new_input, old_input);
-    return retval;
-}
-
-internal int
-sdl_HandleKey(const SDL_Event event,
-              struct game_controller_input *keyboard_controller)
-{
-    SDL_Keycode key_code = event.key.keysym.sym;
-    SDL_Keymod  KeyMod  = event.key.keysym.mod;
-    // SDL_Keymod  KeyMod = SDL_GetModState()  // Or this?
-
-    bool is_down = (event.key.state == SDL_PRESSED);
-    bool WasDown = false;
-    if (event.key.state == SDL_RELEASED)
-    {
-        WasDown = true;
-    }
-    else if (event.key.repeat != 0)
-    {
-        WasDown = true;
-    }
-
-    if (event.key.repeat == 0)
-    {
-        if(key_code == SDLK_w)
-        {
-            sdl_process_keyboard_event(&keyboard_controller->MoveUp, is_down);
-        }
-        else if(key_code == SDLK_a)
-        {
-            sdl_process_keyboard_event(&keyboard_controller->MoveLeft, is_down);
-        }
-        else if(key_code == SDLK_s)
-        {
-            sdl_process_keyboard_event(&keyboard_controller->MoveDown, is_down);
-        }
-        else if(key_code == SDLK_d)
-        {
-            sdl_process_keyboard_event(&keyboard_controller->MoveRight, is_down);
-        }
-        else if(key_code == SDLK_q)
-        {
-            sdl_process_keyboard_event(&keyboard_controller->Lshoulder, is_down);
-        }
-        else if(key_code == SDLK_e)
-        {
-            sdl_process_keyboard_event(&keyboard_controller->Rshoulder, is_down);
-        }
-        else if(key_code == SDLK_UP)
-        {
-            sdl_process_keyboard_event(&keyboard_controller->ActionUp, is_down);
-        }
-        else if(key_code == SDLK_DOWN)
-        {
-            sdl_process_keyboard_event(&keyboard_controller->ActionDown, is_down);
-        }
-        else if(key_code == SDLK_LEFT)
-        {
-            sdl_process_keyboard_event(&keyboard_controller->ActionLeft, is_down);
-        }
-        else if(key_code == SDLK_RIGHT)
-        {
-            sdl_process_keyboard_event(&keyboard_controller->ActionRight, is_down);
-        }
-#if DEBUG
-        else if(key_code == SDLK_SPACE)
-        {
-            GlobalPaused = !GlobalPaused;
-        }
-#endif
-        else if(key_code == SDLK_x)
-        {
-            SDL_Log("Exiting...\n");
-            return RETURN_EXIT;
-        }
-        else if(key_code == SDLK_ESCAPE)
-        {
-            if(is_down)
-            {
-                SDL_Log("Escape Is down\n");
-            }
-            if(WasDown)
-            {
-                SDL_Log("Escape Was down\n");
-            }
-        }
-        else if((key_code == SDLK_RETURN) && (KeyMod & KMOD_ALT))
-        {
-            SDL_Log("ALT-ENTER pressed\n");
-        }
-        else if((key_code == SDLK_F4) && (KeyMod & KMOD_ALT))
-        {
-            SDL_Log("ALT-F4 pressed\n");
-            return RETURN_EXIT;
-        }
-        else
-        {
-            SDL_Log("Unmapped key pressed\n");
-        }
-    }
-    return RETURN_SUCCESS;
-}
-
-internal int
-sdl_handle_window(const SDL_Event event)
-{
-    switch(event.window.event)
-    {
-        case SDL_WINDOWEVENT_MOVED:
-        { /* pass */ } break;
-
-        case SDL_WINDOWEVENT_RESIZED:
-        { /* handled in SIZE_CHANGED */ } break;
-
-        case SDL_WINDOWEVENT_SIZE_CHANGED:
-        {
-            SDL_Log("%s: Window size changed (%d, %d)\n",
-                    __func__, event.window.data1, event.window.data2);
-        } break;
-
-        case SDL_WINDOWEVENT_FOCUS_GAINED:
-        {
-            SDL_Log("%s: Window focus gained\n", __func__);
-        } break;
-
-        case SDL_WINDOWEVENT_FOCUS_LOST:
-        {
-            SDL_Log("%s: Window focus lost\n", __func__);
-        } break;
-
-        case SDL_WINDOWEVENT_ENTER:
-        {
-            SDL_Log("%s: Mouse focus gained\n", __func__);
-        } break;
-
-        case SDL_WINDOWEVENT_LEAVE:
-        {
-            SDL_Log("%s: Mouse focus lost\n", __func__);
-        } break;
-
-        case SDL_WINDOWEVENT_EXPOSED:
-        {
-            SDL_Log("%s: Window exposed\n", __func__);
-            SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
-            sdl_UpdateWindow(window, &GlobalBackBuffer);
-        } break;
-
-        case SDL_WINDOWEVENT_CLOSE:
-        {
-            SDL_Log("%s: Window Close requested\n", __func__);
-            return RETURN_EXIT;
-        } break;
-
-        case SDL_WINDOWEVENT_TAKE_FOCUS:
-        {
-            SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
-            SDL_RaiseWindow(window);
-        } break;
-
-        default:
-        {
-            SDL_Log("%s: Window event not handled: %d\n", __func__, event.window.event);
-        } break;
-    }
-    return RETURN_SUCCESS;
-}
-
-#endif
-
-
-internal void
-sdl_audio_callback(void *user_data, u8 *audio_data, int length)
-{
-    struct sdl_audio_ring_buffer *ring_buffer = (struct sdl_audio_ring_buffer *)user_data;
-
-    i32 region_1_size = length;
-    i32 region_2_size = 0;
-    /* Not enough space on ring buffer region */
-    if ( (ring_buffer->play_cursor + length) > ring_buffer->size)
-    {
-        region_1_size = ring_buffer->size - ring_buffer->play_cursor;
-        region_2_size = length - region_1_size;
-    }
-
-    memcpy(audio_data, (u8*)(ring_buffer->data) + ring_buffer->play_cursor, region_1_size);
-    memcpy(audio_data + region_1_size, ring_buffer->data, region_2_size);
-    ring_buffer->play_cursor =  (ring_buffer->play_cursor + length) % ring_buffer->size;
-    ring_buffer->write_cursor = (ring_buffer->play_cursor + length) % ring_buffer->size;
-}
-
-internal void
-sdl_SoundGetCursors(struct sdl_audio_ring_buffer *ring_buffer,
-                    struct sdl_sound_output *sound_output,
-                    struct sdl_performance_counters *perf,
-                    struct sdl_audio_counters *audio_perf,
-                    u64 *byte_to_lock, u64 *bytes_to_write)
-{
-
-    SDL_LockAudioDevice(sound_output->audio_device);
-    *byte_to_lock = (sound_output->running_sample_index * sound_output->bytes_per_sample) % sound_output->secondary_buffer_size;
-
-    u64 expected_sound_bytes_per_frame = (sound_output->samples_per_second * sound_output->bytes_per_sample)/ perf->game_update_hz;
-    f64 seconds_left_until_flip = perf->target_seconds_per_frame - audio_perf->from_begin_to_audio_seconds;
-    u64 expected_bytes_until_flip = (size_t)(( seconds_left_until_flip / perf->target_seconds_per_frame )*(f64)expected_sound_bytes_per_frame);
-    u64 expected_frame_boundary_byte = ring_buffer->play_cursor + expected_sound_bytes_per_frame;
-
-    u64 safe_write_cursor = ring_buffer->write_cursor;
-    if(safe_write_cursor < ring_buffer->play_cursor)
-    {
-        safe_write_cursor += sound_output->secondary_buffer_size;
-    }
-
-    /* TODO: Assert(safe_write_cursor >= play_cursor); */
-    safe_write_cursor += sound_output->safety_bytes;
-
-    bool audio_card_is_low_latency = (safe_write_cursor < expected_frame_boundary_byte);
-
-    u64 target_cursor = 0;
-    if(audio_card_is_low_latency)
-    {
-        target_cursor = (expected_frame_boundary_byte + expected_sound_bytes_per_frame);
-    }
-    else
-    {
-        target_cursor = (ring_buffer->write_cursor + expected_sound_bytes_per_frame +
-                        sound_output->safety_bytes);
-    }
-    target_cursor = (target_cursor % sound_output->secondary_buffer_size);
-    target_cursor = (ring_buffer->play_cursor + (sound_output->safety_bytes * sound_output->bytes_per_sample)) % sound_output->secondary_buffer_size;
-
-
-    if(*byte_to_lock > target_cursor)
-    {
-        *bytes_to_write =  (sound_output->secondary_buffer_size - *byte_to_lock);
-        *bytes_to_write += target_cursor;
-    }
-    else
-    {
-        *bytes_to_write = target_cursor - *byte_to_lock;
-    }
-    SDL_UnlockAudioDevice(sound_output->audio_device);
-
-    audio_perf->target_cursor = target_cursor;
-    audio_perf->expected_frame_boundary_byte = expected_frame_boundary_byte;
-}
-
-internal void
-sdl_Fillsound_buffer(struct sdl_sound_output *sound_output,
-                    int byte_to_lock,
-                    int bytes_to_write,
-                    struct game_sound_output_buffer *sound_buffer)
-{
-    i16 *samples = sound_buffer->samples;
-    i16 *sample_out = NULL;
-
-    /* Calculate region sizes */
-    void *region1 = (u8*)GlobalAudioRingBuffer.data + byte_to_lock;
-    u64 region1_size = bytes_to_write;
-
-    if(region1_size + byte_to_lock > sound_output->secondary_buffer_size)
-        region1_size = sound_output->secondary_buffer_size - byte_to_lock;
-
-    void *region2 = GlobalAudioRingBuffer.data;
-    u64 region2_size = bytes_to_write - region1_size;
-
-    /* Fill region 1 */
-    u64 region1_sample_count = region1_size / sound_output->bytes_per_sample;
-    sample_out = (i16*)region1;
-    for (u64 i = 0; i < region1_sample_count; ++i)
-    {
-        *sample_out++ = *samples++;     // L
-        *sample_out++ = *samples++;     // R
-        ++sound_output->running_sample_index;
-    }
-
-    /* Fill region 2 */
-    u64 region2_sample_count = region2_size / sound_output->bytes_per_sample;
-    sample_out = (i16*)region2;
-    for (u64 i = 0; i < region2_sample_count; ++i)
-    {
-        *sample_out++ = *samples;     // L
-        *sample_out++ = *samples;     // R
-        ++sound_output->running_sample_index;
-    }
-}
-
-#if DEBUG
-internal void
-sdl_DebugDrawVertical(struct sdl_offscreen_buffer *BackBuffer,
-                      int X,
-                      int Top,
-                      int Bottom,
-                      u32 Color)
-{
-    u8 *Pixel = ((u8*)BackBuffer->Memory +
-                 X * BackBuffer->BytesPerPixel +
-                 Top * BackBuffer->Pitch);
-
-    for(int y = Top; y < Bottom; ++y)
-    {
-        *(u32*)Pixel = Color;
-        Pixel += BackBuffer->Pitch;
-    }
-}
-
-internal inline void
-sdl_Drawsound_bufferMarker(struct sdl_offscreen_buffer *BackBuffer,
-                          struct sdl_sound_output *Sound,
-                          f32 C, int PadX, int Top,
-                          int Bottom, int Value, u32 Color)
-{
-    /* TODO: Assert(value < sound -> Secondary buffer size); */
-    f32 x32 = C * (f32)Value;
-    int X = PadX + (int)x32;
-    sdl_DebugDrawVertical(BackBuffer, X, Top, Bottom, Color);
-}
-
-internal void
-sdl_DebugSyncDisplay(struct sdl_offscreen_buffer *BackBuffer,
-                     int MarkerCount,
-                     struct sdl_debug_time_marker *Markers,
-                     int CurrentMarkerIndex,
-                     struct sdl_sound_output *sound_output,
-                     struct sdl_performance_counters *perf)
-{
-    int PadX = 16;
-    int PadY = 16;
-
-    int LineHeight = 64;
-
-    // What C stands for??!?!?!?
-    f32 C = (f32)(BackBuffer->Width - 2*PadX) / (f32)sound_output->secondary_buffer_size;
-    for(int MarkerIndex = 0; MarkerIndex < MarkerCount; ++MarkerIndex)
-    {
-        struct sdl_debug_time_marker *ThisMarker = Markers + MarkerIndex;
-        Assert(ThisMarker->output_play_cursor < sound_output->secondary_buffer_size);
-        Assert(ThisMarker->output_write_cursor < sound_output->secondary_buffer_size);
-        Assert(ThisMarker->output_location < sound_output->secondary_buffer_size);
-        // Assert(ThisMarker->output_byte_count < sound_output->secondary_buffer_size);
-        Assert(ThisMarker->flip_play_cursor < sound_output->secondary_buffer_size);
-        Assert(ThisMarker->flip_write_cursor < sound_output->secondary_buffer_size);
-        u32 PlayColor         = 0xFFFFFFFF;
-        u32 WriteColor        = 0xFFFF0000;
-        u32 ExpectedFlipColor = 0xFFFFFF00;  /* Yellow */
-        u32 PlayWindowColor   = 0xFF00FF00;  /* Green */
-
-        int jitter = 480;
-        int Top = PadY;
-        int Bottom = PadY + LineHeight;
-
-        if(MarkerIndex == CurrentMarkerIndex)
-        {
-            Top += LineHeight + PadY;
-            Bottom += LineHeight + PadY;
-
-            int FirstTop = Top;
-
-            // Top bar
-            sdl_Drawsound_bufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->output_play_cursor,  PlayColor);
-            sdl_Drawsound_bufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->output_write_cursor, WriteColor);
-
-            Top += LineHeight + PadY;
-            Bottom += LineHeight + PadY;
-
-            // Mid bar
-            sdl_Drawsound_bufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->output_location,  PlayColor);
-            sdl_Drawsound_bufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->output_location + ThisMarker->output_byte_count, WriteColor);
-
-            Top += LineHeight + PadY;
-            Bottom += LineHeight + PadY;
-
-            // Large bar
-            sdl_Drawsound_bufferMarker(BackBuffer, sound_output, C, PadX, FirstTop, Bottom, ThisMarker->expected_flip_play_cursor,  ExpectedFlipColor);
-        }
-
-        // Top bars...
-        sdl_Drawsound_bufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->flip_play_cursor,  PlayColor);
-        sdl_Drawsound_bufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->flip_play_cursor + jitter*sound_output->bytes_per_sample,  PlayWindowColor);
-        sdl_Drawsound_bufferMarker(BackBuffer, sound_output, C, PadX, Top, Bottom, ThisMarker->flip_write_cursor,  WriteColor);
-    }
-}
-#endif
-
-#endif

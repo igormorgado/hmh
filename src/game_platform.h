@@ -219,10 +219,10 @@ void                          debug_platform_free_file_memory  (void       *memo
 bool                          debug_platform_write_entire_file (const char *filename,
                                                                 size_t     memory_size,
                                                                 void       *memory);
-extern   struct game_memory *debug_global_memory;
-
 
 # if defined(COMPILER_MSVC)
+
+extern   struct game_memory *debug_global_memory;
 
 #  define BEGIN_TIMED_BLOCK(ID) { \
                                     u64 start_cycle_count##ID = __rdtsc();   \
@@ -408,13 +408,13 @@ typedef struct platform_api
 
 struct game_memory
 {
-    b32 is_initialized;
-
     size_t      permanent_storage_size;
     void        *permanent_storage;  // Must be zeroed at startup
 
     size_t      transient_storage_size;
     void        *transient_storage;  // Must be zeroed at stattup
+
+    b32 is_initialized;
 
 #if 0 /* Only after day 130 */
     struct platform_work_queue *high_priority_queue;
@@ -431,7 +431,6 @@ struct game_memory
 
 };
 
-#if !defined(CASEYDEFS)
 /* HERE */
 typedef void game_update_and_render (struct game_memory              *memory,
                                      struct game_input               *input,
@@ -440,13 +439,6 @@ typedef void game_update_and_render (struct game_memory              *memory,
 /* This function must be very fast. no more than 1ms */
 typedef void game_get_sound_samples (struct game_memory              *memory,
                                      struct game_sound_output_buffer *sound_buffer);
-#else
-#define GAME_UPDATE_AND_RENDER(name) void name(struct game_memory *memory, struct game_input *input, struct game_offscreen_buffer *screen_buffer)
-typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
-
-#define GAME_GET_SOUND_SAMPLES(name) void name(struct game_memory *memory, struct game_sound_output_buffer *sound_buffer)
-typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
-#endif
 
 inline struct game_controller_input *
 get_controller(struct game_input *input, uint controller_index)

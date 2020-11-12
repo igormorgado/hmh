@@ -1,6 +1,4 @@
 #include "game.h"
-#include "sdl_game.h"
-
 
 internal i32
 game_output_sound(struct game_state *game_state, struct game_sound_output_buffer *sound_buffer)
@@ -80,17 +78,10 @@ render_player(struct game_offscreen_buffer *screen_buffer, int player_x, int pla
 
 
 /* Renderer entry point */
-#if !defined(CASEYDEFS)
 void
 game_update_and_render_f(struct game_memory *memory,
                          struct game_input *input,
                          struct game_offscreen_buffer *screen_buffer)
-#else
-#ifdef __cplusplus
-extern "C"
-#endif
-GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
-#endif
 {
     /* TODO: SDL_Asserts????  or some wrapper over it? */
     Assert(sizeof(struct game_state) <= memory->permanent_storage_size)
@@ -102,6 +93,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     if(!memory->is_initialized)
     {
 
+#if 0
 #if GAME_INTERNAL
         const char *filename = __FILE__;
         struct debug_read_file_result file = debug_platform_read_entire_file(filename);
@@ -111,10 +103,15 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             debug_platform_free_file_memory(file.contents);
         }
 #endif
-        game_state->tone_hz = 512.0f;
+#endif
+        game_state->tone_hz = 256.0f;
         game_state->amplitude = 3000;
         game_state->t_sine = 0.0f;
         game_state->t_jump = 0.0f;
+
+        game_state->green_offset = 1;
+        game_state->blue_offset = 2;
+        game_state->red_offset = 4;
 
         game_state->player_x = 100;
         game_state->player_y = 100;
@@ -144,11 +141,11 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         }
 
         game_state->player_x += (int)(4.0f * controller->stick_average_x);
-        game_state->player_y -= (int)(4.0f * controller->stick_average_y);
+        game_state->player_y += (int)(4.0f * controller->stick_average_y);
 
         if (game_state->t_jump > 0)
         {
-            game_state->player_y = (int)(5.0f * sinf(0.5 * PI * game_state->t_jump));
+            game_state->player_y += (int)(3.0f * sinf(0.5 * PI * game_state->t_jump));
         }
 
         if (controller->action_down.ended_down)
@@ -175,16 +172,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 }
 
 /* Sound entry point */
-#if !defined(CASEYDEFS)
-internal void
+void
 game_get_sound_samples_f(struct game_memory *memory,
                          struct game_sound_output_buffer *sound_buffer)
-#else
-#ifdef __cplusplus
-extern "C"
-#endif
-GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
-#endif
 {
     struct game_state *game_state = (struct game_state *)memory->permanent_storage;
     game_output_sound(game_state, sound_buffer);

@@ -1,24 +1,26 @@
 CC=gcc
-DIRECTIVES=-DGAME_INTERNAL -DGAME_SLOW 
 DIRECTIVES=-DGAME_INTERNAL
-## -DCASEYDEFS
-## DIRECTIVES=-DDEBUG -DGAME_INTERNAL -DGAME_SLOW
-	## $(CC) $(DIRECTIVES) $(CFLAGS) -c -fPIC game.c -o game.so.o
-	## $(CC) $(DIRECTIVES) $(CFLAGS) -shared -o game.so.tmp  game.so.o
+# -DGAME_SLOW  -DDEBUG
 ## TODO(Igor): --pedantic
 CFLAGS=-g -Og -Wall -Werror -Wno-unused-function -Wno-unused-variable
+SDL_FLAGS = $(shell pkg-config --libs --cflags sdl2)
+LDFLAGS = -lm
+TARGETS = game.so sdl_game
 
-build: game.so sdl_game
 
-all: clean game.so sdl_game
+build: ${TARGETS}
 
-game.so:
-	$(CC) $(DIRECTIVES) $(CFLAGS) -fPIC -shared game.c -o game.so.tmp 
-	mv game.so.tmp game.so
+all: clean build
 
-sdl_game:
-	$(CC) $(DIRECTIVES) $(CFLAGS) sdl_game.c -I. -o sdl_game.x86_64 -ldl $(shell pkg-config --libs --cflags sdl2) -lm
+game.so: game.c game.h game_platform.h
+	$(CC) $(DIRECTIVES) $(CFLAGS) -fPIC -shared game.c -o game.so
 
+sdl_game: sdl_game.c sdl_game.h game_platform.h
+	$(CC) $(DIRECTIVES) $(CFLAGS) sdl_game.c -I. -o sdl_game -ldl $(SDL_FLAGS) $(LDFLAGS)
+
+
+cclean:
+	rm -f *.hmi *.o *.tmp
 
 clean:
-	rm -f game.so game.so.tmp game game.x86_65 test.out game.so.o game.o *.hmi sdl_game *.o sdl_game.x86_64
+	rm -f *.o *.so *.tmp *.hmi *.x86_64 *.x86_32 sdl_game

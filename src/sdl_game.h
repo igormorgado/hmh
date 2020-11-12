@@ -17,12 +17,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <errno.h>
 
 /*
  * Plataform dependant code
  */
 
 #define SDL_STATE_FILE_NAME_MAX_SIZE 4096
+#define REPLAY_BUFFERS_MAX 4
 
 struct sdl_offscreen_buffer
 {
@@ -66,11 +68,15 @@ struct sdl_debug_time_marker
 
 struct sdl_game_code
 {
+    /* Pointer to dynlib loaded */
     void *game_code_dll;
+    /* Last time dynlib was writtern */
     time_t dll_last_write_time;
+    /* Pointer to game code exposed functions */
     game_update_and_render *update_and_render;
     game_get_sound_samples *get_sound_samples;
 
+    /* If game_code struct is sane */
     bool is_valid;
 };
 
@@ -82,7 +88,6 @@ struct sdl_replay_buffer
     void *memory_block;
 };
 
-#define REPLAY_BUFFERS_MAX 4
 struct sdl_state
 {
     size_t total_size;
@@ -95,7 +100,7 @@ struct sdl_state
     int playing_handle;
     size_t input_playing_index;
 
-    char exe_filename[SDL_STATE_FILE_NAME_MAX_SIZE];
+    char exe_filepath[SDL_STATE_FILE_NAME_MAX_SIZE];
     char *exe_basename;
 
 };

@@ -18,13 +18,11 @@ struct game_state
     f32 t_jump;
 };
 
-#if !defined(CASEYDEFS)
-internal void game_update_and_render_f (struct game_memory              *memory,
-                                        struct game_input               *input,
-                                        struct game_offscreen_buffer    *screen_buffer);
+void game_update_and_render_f (struct game_memory              *memory,
+                               struct game_input               *input,
+                               struct game_offscreen_buffer    *screen_buffer);
 
-internal void game_get_sound_samples_f (struct game_memory              *memory,
-                                        struct game_sound_output_buffer *sound_buffer);
-#endif
+void game_get_sound_samples_f (struct game_memory              *memory,
+                               struct game_sound_output_buffer *sound_buffer);
 
 #endif /* __GAME_H__ */
