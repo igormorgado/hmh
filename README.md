@@ -6,6 +6,8 @@ make
 ./hmh
 ```
 
+Code as IS IS NOT CRACKING ANYMORE.. sound is perfect.. 
+
 # TODO
 
 Check

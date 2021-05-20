@@ -1,18 +1,18 @@
 CC=gcc
 DIRECTIVES=-DGAME_INTERNAL
 # -DGAME_SLOW  -DDEBUG
-CFLAGS=-Ofast -Wall -Werror -Wno-unused-function -Wno-unused-variable
+CFLAGS=-g -Og -Wall -Werror -Wno-unused-function -Wno-unused-variable
 SDL_FLAGS = $(shell pkg-config --libs --cflags sdl2)
 LDFLAGS = -lm
-TARGETS = game.so sdl_game
+TARGETS = libgame.so sdl_game
 
 
 build: ${TARGETS}
 
 all: clean build
 
-game.so: game.c ../include/game.h ../include/game_platform.h
-	$(CC) $(DIRECTIVES) $(CFLAGS) -fPIC -I. -I../include -shared game.c -o game.so
+libgame.so: game.c ../include/game.h ../include/game_platform.h
+	$(CC) $(DIRECTIVES) $(CFLAGS) -fPIC -I. -I../include -shared game.c -o libgame.so
 
 sdl_game: sdl_game.c ../include/sdl_game.h ../include/game_platform.h
 	$(CC) $(DIRECTIVES) $(CFLAGS) sdl_game.c -I. -I../include -o sdl_game -ldl $(SDL_FLAGS) $(LDFLAGS)
