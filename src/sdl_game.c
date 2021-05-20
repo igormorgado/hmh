@@ -1164,7 +1164,7 @@ main (void)
      * Game Window Initialization
      */
     SDL_Window *window = sdl_init_game(960, 540);
-    if(!window) goto __EXIT__;
+    if(!window) goto __EXIT_WINDOW__;
 
 
     /*
@@ -1277,7 +1277,7 @@ main (void)
     if(! (sound_samples && game_memory.permanent_storage && game_memory.transient_storage))
     {
         /* TODO: Logging */
-        goto __EXIT__;
+        goto __EXIT_AUDIO__;
     }
 
 
@@ -1572,7 +1572,7 @@ main (void)
     sdl_game_controllers_close();
     exitval = EXIT_SUCCESS;
 
-__EXIT__:
+__EXIT_AUDIO__:
     SDL_Log ("Exiting\n");
     /* Why gcc is returning error about unitialized ? */
     if(sound_samples)
@@ -1583,7 +1583,7 @@ __EXIT__:
     if(sdl_state.game_memory_block)
         munmap(sdl_state.game_memory_block, sdl_state.total_size);
 
-    if(sound_output.audio_device != 0)
+    if(sound_output.audio_device > 0)
         SDL_CloseAudioDevice(sound_output.audio_device);
 
     if (global_back_buffer.memory)
@@ -1592,6 +1592,7 @@ __EXIT__:
     if (global_back_buffer.texture)
         SDL_DestroyTexture(global_back_buffer.texture);
 
+__EXIT_WINDOW__:
     if (window)
     {
         SDL_Renderer *renderer = SDL_GetRenderer(window);

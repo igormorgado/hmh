@@ -1,7 +1,7 @@
 CC=gcc
 DIRECTIVES=-DGAME_INTERNAL
 # -DGAME_SLOW  -DDEBUG
-CFLAGS=-Wall -Werror -Wno-unused-function -Wno-unused-variable
+CFLAGS=-Ofast -Wall -Werror -Wno-unused-function -Wno-unused-variable
 SDL_FLAGS = $(shell pkg-config --libs --cflags sdl2)
 LDFLAGS = -lm
 TARGETS = game.so sdl_game
