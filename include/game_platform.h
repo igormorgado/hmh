@@ -159,7 +159,7 @@ enum RETURN_STATUS
 
 
 /*
- * Helpful custom inline macros
+ * Helpful custom  macros
  */
 
 #define MININT(a, b)    ((a) < (b) ? (a) : (b))
@@ -177,7 +177,7 @@ enum RETURN_STATUS
 #define Align8(value)  (((value) +  7) &  ~7)
 #define Align16(value) (((value) + 15) & ~15)
 
-inline u32
+u32
 safe_truncate_u64(u64 value)
 {
     /* TODO: Assert (value <= 0xFFFFFFFF) */
@@ -440,7 +440,7 @@ typedef void game_update_and_render (struct game_memory              *memory,
 typedef void game_get_sound_samples (struct game_memory              *memory,
                                      struct game_sound_output_buffer *sound_buffer);
 
-inline struct game_controller_input *
+struct game_controller_input *
 get_controller(struct game_input *input, uint controller_index)
 {
 #if GAME_SLOW

@@ -183,7 +183,7 @@ debug_plataform_write_entire_file(const char *filename, size_t memory_size, void
 
 
 /* Note(imp): This function should be name get_filename_write_time */
-inline time_t
+time_t
 sdl_get_last_write_time(char *filename)
 {
     time_t last_write_time = 0;
@@ -864,7 +864,7 @@ sdl_process_pending_events(struct sdl_state *state,
 }
 
 
-inline u64
+u64
 sdl_get_wall_clock(void)
 {
     u64 result = SDL_GetPerformanceCounter();
@@ -1063,7 +1063,7 @@ sdl_debug_draw_vertical(struct sdl_offscreen_buffer *back_buffer,
     }
 }
 
-internal inline void
+internal void
 sdl_draw_sound_buffer_marker(struct sdl_offscreen_buffer *back_buffer,
                             struct sdl_sound_output *sound_output,
                             f32 C, int pad_x, int top,
@@ -1154,7 +1154,7 @@ main (void)
     sdl_get_exe_filepath(&sdl_state);
     char game_code_dll_fullpath[SDL_STATE_FILE_NAME_MAX_SIZE];
     sdl_build_filepath (&sdl_state,
-                        "game.so",
+                        "libgame.so",
                         game_code_dll_fullpath,
                         sizeof(game_code_dll_fullpath));
     struct sdl_game_code game = sdl_load_game_code(game_code_dll_fullpath);
@@ -1583,7 +1583,7 @@ __EXIT__:
     if(sdl_state.game_memory_block)
         munmap(sdl_state.game_memory_block, sdl_state.total_size);
 
-    if(sound_output.audio_device > 0)
+    if(sound_output.audio_device != 0)
         SDL_CloseAudioDevice(sound_output.audio_device);
 
     if (global_back_buffer.memory)

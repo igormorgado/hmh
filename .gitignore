@@ -10,3 +10,5 @@ test.out
 sdl_game
 sdl_game.x86_64
 sdl_game.x86_32
+.clang
+_build
