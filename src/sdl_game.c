@@ -1147,6 +1147,7 @@ main (void)
     SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 #endif
 
+
     /*
      * Game states
      */

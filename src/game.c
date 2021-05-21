@@ -179,3 +179,4 @@ game_get_sound_samples_f(struct game_memory *memory,
     struct game_state *game_state = (struct game_state *)memory->permanent_storage;
     game_output_sound(game_state, sound_buffer);
 }
+
