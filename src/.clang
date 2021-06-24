@@ -1,0 +1,6 @@
+-I.
+-Iinclude
+-I../include
+-I/usr/include/SDL2 
+-I/usr/include
+

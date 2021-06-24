@@ -1,0 +1,9 @@
+-I.
+-I../include
+-I/usr/include/SDL2
+-DGAME_INTERNAL
+-D_REENTRANT
+-Wall
+-Werror
+-Wno-unused-function
+-Wno-unused-variable

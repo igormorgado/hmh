@@ -1,0 +1,2 @@
+-I/usr/include/SDL2 -Isrc -I. -I/usr/include -Iinclude
+
